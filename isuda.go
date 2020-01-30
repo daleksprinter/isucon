@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -323,22 +322,18 @@ func htmlify(w http.ResponseWriter, r *http.Request, content string) string {
 
 	keywords := make([]string, 0, 500)
 	for _, entry := range entries {
-		keywords = append(keywords, regexp.QuoteMeta(entry.Keyword))
+		keywords = append(keywords, entry.Keyword)
 	}
-	re := regexp.MustCompile("("+strings.Join(keywords, "|")+")")
-	kw2sha := make(map[string]string)
-	content = re.ReplaceAllStringFunc(content, func(kw string) string {
-		kw2sha[kw] = "isuda_" + fmt.Sprintf("%x", sha1.Sum([]byte(kw)))
-		return kw2sha[kw]
-	})
-	content = html.EscapeString(content)
-	for kw, hash := range kw2sha {
-		u, err := r.URL.Parse(baseUrl.String()+"/keyword/" + pathURIEscape(kw))
+
+	for _, keyword := range keywords {
+		u, err := r.URL.Parse(baseUrl.String() + "/keyword/" + pathURIEscape(keyword))
 		panicIf(err)
-		link := fmt.Sprintf("<a href=\"%s\">%s</a>", u, html.EscapeString(kw))
-		content = strings.Replace(content, hash, link, -1)
+		link := fmt.Sprintf("<a href=\"%s\">%s</a>", u, html.EscapeString(keyword))
+		content = strings.Replace(content, keyword, link, -1)
 	}
+
 	return strings.Replace(content, "\n", "<br />\n", -1)
+
 }
 
 func loadStars(keyword string) []*Star {
