@@ -41,7 +41,6 @@ var (
 )
 
 func getStars(keyword string) *[]Star {
-	fmt.Println(keyword)
 	rows, err := db.Query(`SELECT * FROM star WHERE keyword = ?`, keyword)
 	if err != nil && err != sql.ErrNoRows {
 		panicIf(err)
@@ -211,11 +210,10 @@ func keywordPostHandler(w http.ResponseWriter, r *http.Request) {
 	userID := getContext(r, "user_id").(int)
 	description := r.FormValue("description")
 
-	if fmt.Println("spamcheck"); isSpamContents(description) || isSpamContents(keyword) {
+	if isSpamContents(description) || isSpamContents(keyword) {
 		http.Error(w, "SPAM!", http.StatusBadRequest)
 		return
 	}
-	fmt.Println(keyword, userID, description)
 	_, err := db.Exec(`
 		INSERT INTO entry (author_id, keyword, description, created_at, updated_at)
 		VALUES (?, ?, ?, NOW(), NOW())
