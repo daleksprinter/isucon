@@ -1,0 +1,59 @@
+-- MySQL dump 10.13  Distrib 5.7.29, for Linux (x86_64)
+--
+-- Host: localhost    Database: isutar
+-- ------------------------------------------------------
+-- Server version	5.7.29-0ubuntu0.16.04.1
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+
+--
+-- Current Database: `isutar`
+--
+
+USE `isutar`;
+
+--
+-- Table structure for table `star`
+--
+
+DROP TABLE IF EXISTS `star`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `star` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `keyword` varchar(191) COLLATE utf8mb4_bin NOT NULL,
+  `user_name` varchar(191) COLLATE utf8mb4_bin NOT NULL,
+  `created_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=91 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `star`
+--
+
+LOCK TABLES `star` WRITE;
+/*!40000 ALTER TABLE `star` DISABLE KEYS */;
+INSERT INTO `star` VALUES (1,'ジャンクション (道路)','vpam','2020-02-01 18:51:38'),(2,'中島徳博','vpam','2020-02-01 18:51:38'),(3,'ペイオフ','vpam','2020-02-01 18:51:38'),(4,'兵庫県道95号灘三田線','vpam','2020-02-01 18:51:38'),(5,'プーミンタラーチャー','vpam','2020-02-01 18:51:38'),(6,'582年','vpam','2020-02-01 18:51:39'),(7,'772年','vpam','2020-02-01 18:51:39'),(8,'LI18NUX','vpam','2020-02-01 18:51:39'),(9,'山田南インターチェンジ','vpam','2020-02-01 18:51:39'),(10,'未確認動物','vpam','2020-02-01 18:51:39'),(11,'斉藤実','qbtcfahx','2020-02-01 18:51:44'),(12,'平尾山','qbtcfahx','2020-02-01 18:51:44'),(13,'イギリス政府','bayside','2020-02-01 18:51:44'),(14,'斉藤実','bayside','2020-02-01 18:51:45'),(15,'上五島町','qbtcfahx','2020-02-01 18:51:45'),(16,'平尾山','bayside','2020-02-01 18:51:45'),(17,'ジャンクション (道路)','qbtcfahx','2020-02-01 18:51:46'),(18,'上五島町','bayside','2020-02-01 18:51:46'),(19,'中島徳博','qbtcfahx','2020-02-01 18:51:46'),(20,'ジャンクション (道路)','bayside','2020-02-01 18:51:46'),(21,'ペイオフ','qbtcfahx','2020-02-01 18:51:47'),(22,'中島徳博','bayside','2020-02-01 18:51:47'),(23,'兵庫県道95号灘三田線','qbtcfahx','2020-02-01 18:51:47'),(24,'ペイオフ','bayside','2020-02-01 18:51:47'),(25,'プーミンタラーチャー','qbtcfahx','2020-02-01 18:51:47'),(26,'582年','qbtcfahx','2020-02-01 18:51:48'),(27,'兵庫県道95号灘三田線','bayside','2020-02-01 18:51:48'),(28,'772年','qbtcfahx','2020-02-01 18:51:48'),(29,'プーミンタラーチャー','bayside','2020-02-01 18:51:49'),(30,'582年','bayside','2020-02-01 18:51:49'),(31,'輪袈裟','zoetin','2020-02-01 18:51:58'),(32,'巨大基数','zoetin','2020-02-01 18:51:58'),(33,'北消防署','zoetin','2020-02-01 18:51:59'),(34,'菅山かおる','sasakure','2020-02-01 18:51:59'),(35,'輪状甲状筋','zoetin','2020-02-01 18:51:59'),(36,'輪袈裟','sasakure','2020-02-01 18:52:00'),(37,'森林基本図','zoetin','2020-02-01 18:52:00'),(38,'巨大基数','sasakure','2020-02-01 18:52:00'),(39,'ウーズ','zoetin','2020-02-01 18:52:00'),(40,'北消防署','sasakure','2020-02-01 18:52:01'),(41,'内田修平','zoetin','2020-02-01 18:52:01'),(42,'輪状甲状筋','sasakure','2020-02-01 18:52:01'),(43,'イギリス政府','zoetin','2020-02-01 18:52:02'),(44,'森林基本図','sasakure','2020-02-01 18:52:02'),(45,'斉藤実','zoetin','2020-02-01 18:52:02'),(46,'平尾山','zoetin','2020-02-01 18:52:02'),(47,'ウーズ','sasakure','2020-02-01 18:52:02'),(48,'内田修平','sasakure','2020-02-01 18:52:03'),(49,'イギリス政府','sasakure','2020-02-01 18:52:04'),(50,'斉藤実','sasakure','2020-02-01 18:52:05'),(51,'船戸山','kawabata','2020-02-01 18:52:14'),(52,'井上敏夫','kawabata','2020-02-01 18:52:14'),(53,'新京成電鉄8900形電車','kawabata','2020-02-01 18:52:15'),(54,'CCE','kawabata','2020-02-01 18:52:15'),(55,'八田小学校','kawabata','2020-02-01 18:52:16'),(56,'船戸山','mala','2020-02-01 18:52:16'),(57,'井上敏夫','mala','2020-02-01 18:52:16'),(58,'横瀬駅','kawabata','2020-02-01 18:52:16'),(59,'トイズ','kawabata','2020-02-01 18:52:17'),(60,'新京成電鉄8900形電車','mala','2020-02-01 18:52:17'),(61,'南蟹谷村','kawabata','2020-02-01 18:52:17'),(62,'菅山かおる','kawabata','2020-02-01 18:52:18'),(63,'CCE','mala','2020-02-01 18:52:18'),(64,'八田小学校','mala','2020-02-01 18:52:18'),(65,'輪袈裟','kawabata','2020-02-01 18:52:18'),(66,'横瀬駅','mala','2020-02-01 18:52:19'),(67,'トイズ','mala','2020-02-01 18:52:19'),(68,'南蟹谷村','mala','2020-02-01 18:52:20'),(69,'菅山かおる','mala','2020-02-01 18:52:21'),(70,'輪袈裟','mala','2020-02-01 18:52:21'),(71,'加藤彰','tyru','2020-02-01 18:52:29'),(72,'G15','tyru','2020-02-01 18:52:30'),(73,'レフラー','tyru','2020-02-01 18:52:30'),(74,'北海道第2区','tyru','2020-02-01 18:52:31'),(75,'松本清張賞','tomyhero','2020-02-01 18:52:32'),(76,'藪田村','tyru','2020-02-01 18:52:32'),(77,'空印寺','tyru','2020-02-01 18:52:32'),(78,'加藤彰','tomyhero','2020-02-01 18:52:32'),(79,'G15','tomyhero','2020-02-01 18:52:33'),(80,'普門院','tyru','2020-02-01 18:52:33'),(81,'レフラー','tomyhero','2020-02-01 18:52:33'),(82,'花伝書','tyru','2020-02-01 18:52:34'),(83,'北海道第2区','tomyhero','2020-02-01 18:52:34'),(84,'船戸山','tyru','2020-02-01 18:52:34'),(85,'井上敏夫','tyru','2020-02-01 18:52:35'),(86,'藪田村','tomyhero','2020-02-01 18:52:35'),(87,'空印寺','tomyhero','2020-02-01 18:52:36'),(88,'普門院','tomyhero','2020-02-01 18:52:36'),(89,'花伝書','tomyhero','2020-02-01 18:52:37'),(90,'船戸山','tomyhero','2020-02-01 18:52:37');
+/*!40000 ALTER TABLE `star` ENABLE KEYS */;
+UNLOCK TABLES;
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- Dump completed on 2020-02-02  3:11:16

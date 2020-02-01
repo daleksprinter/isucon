@@ -14,7 +14,7 @@ type Entry struct {
 	CreatedAt   time.Time
 
 	Html  string
-	Stars []*Star
+	Stars *[]Star
 }
 
 type User struct {
