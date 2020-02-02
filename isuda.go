@@ -149,7 +149,7 @@ func topHandler(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(p)
 
 	rows, err := db.Query(fmt.Sprintf(
-		"SELECT * FROM entry ORDER BY updated_at DESC LIMIT %d OFFSET %d",
+		"SELECT keyword, description FROM entry ORDER BY updated_at DESC LIMIT %d OFFSET %d",
 		perPage, perPage*(page-1),
 	))
 	if err != nil && err != sql.ErrNoRows {
@@ -158,7 +158,7 @@ func topHandler(w http.ResponseWriter, r *http.Request) {
 	entries := make([]*Entry, 0, 10)
 	for rows.Next() {
 		e := Entry{}
-		err := rows.Scan(&e.ID, &e.AuthorID, &e.Keyword, &e.Description, &e.UpdatedAt, &e.CreatedAt)
+		err := rows.Scan(&e.Keyword, &e.Description)
 		panicIf(err)
 		e.Html = htmlify(w, r, e.Description)
 		e.Stars = loadStars(e.Keyword)
@@ -306,9 +306,9 @@ func keywordByKeywordHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	keyword, _ := url.QueryUnescape(mux.Vars(r)["keyword"])
-	row := db.QueryRow(`SELECT * FROM entry WHERE keyword = ?`, keyword)
+	row := db.QueryRow(`SELECT keyword, description FROM entry WHERE keyword = ?`, keyword)
 	e := Entry{}
-	err := row.Scan(&e.ID, &e.AuthorID, &e.Keyword, &e.Description, &e.UpdatedAt, &e.CreatedAt)
+	err := row.Scan(&e.Keyword, &e.Description)
 	if err == sql.ErrNoRows {
 		notFound(w)
 		return
@@ -355,37 +355,43 @@ func keywordByKeywordDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-func htmlify(w http.ResponseWriter, r *http.Request, content string) string {
-	if content == "" {
-		return ""
-	}
+func makeReplacer(r *http.Request) (toHash *strings.Replacer, toLink *strings.Replacer) {
 	rows, err := db.Query(`
 		SELECT keyword FROM entry ORDER BY CHARACTER_LENGTH(keyword) DESC
 	`)
 	panicIf(err)
-	entries := make([]*Entry, 0, 500)
+	hashSlice := make([]string, 0, 14000)
+	linkSlice := make([]string, 0, 14000)
 	for rows.Next() {
-		e := Entry{}
-		err := rows.Scan(&e.Keyword)
+		var e string
+		err := rows.Scan(&e)
 		panicIf(err)
-		entries = append(entries, &e)
+
+		hash := "isuda_" + fmt.Sprintf("%x", sha1.Sum([]byte(e)))
+		u := baseUrl.String() + "/keyword/" + pathURIEscape(e)
+		k := html.EscapeString(e)
+		link := fmt.Sprintf("<a href=\"%s\">%s</a>", u, k)
+
+		hashSlice = append(hashSlice, e, hash)
+		linkSlice = append(linkSlice, hash, link)
 	}
 	rows.Close()
 
-	keywords := make([]string, 0, 500)
-	for _, entry := range entries {
-		keywords = append(keywords, entry.Keyword)
-	}
+	toHash = strings.NewReplacer(hashSlice...)
+	toLink = strings.NewReplacer(linkSlice...)
+	return
+}
 
-	for _, keyword := range keywords {
-		u, err := r.URL.Parse(baseUrl.String() + "/keyword/" + pathURIEscape(keyword))
-		panicIf(err)
-		link := fmt.Sprintf("<a href=\"%s\">%s</a>", u, html.EscapeString(keyword))
-		content = strings.Replace(content, keyword, link, -1)
+func htmlify(w http.ResponseWriter, r *http.Request, content string) string {
+	if content == "" {
+		return ""
 	}
+	toHash, toLink := makeReplacer(r)
 
+	content = toHash.Replace(content)
+	content = html.EscapeString(content)
+	content = toLink.Replace(content)
 	return strings.Replace(content, "\n", "<br />\n", -1)
-
 }
 
 func loadStars(keyword string) *[]Star {
