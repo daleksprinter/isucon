@@ -30,9 +30,15 @@ const (
 	avatarMaxBytes = 1 * 1024 * 1024
 )
 
+type Read struct {
+	UserID    int64
+	ChannelID int64
+}
+
 var (
 	db            *sqlx.DB
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
+	lastRead      map[Read]int64
 )
 
 type Renderer struct {
@@ -58,9 +64,9 @@ func init() {
 	}
 	db_user := os.Getenv("ISUBATA_DB_USER")
 	if db_user == "" {
-		db_user = "root"
+		db_user = "isucon"
 	}
-	db_password := os.Getenv("ISUBATA_DB_PASSWORD")
+	db_password := "isucon"
 	if db_password != "" {
 		db_password = ":" + db_password
 	}
@@ -398,13 +404,11 @@ func getMessage(c echo.Context) error {
 	}
 
 	if len(messages) > 0 {
-		_, err := db.Exec("INSERT INTO haveread (user_id, channel_id, message_id, updated_at, created_at)"+
-			" VALUES (?, ?, ?, NOW(), NOW())"+
-			" ON DUPLICATE KEY UPDATE message_id = ?, updated_at = NOW()",
-			userID, chanID, messages[0].ID, messages[0].ID)
-		if err != nil {
-			return err
+		r := Read{
+			UserID:    userID,
+			ChannelID: chanID,
 		}
+		lastRead[r] = messages[0].ID
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -416,34 +420,13 @@ func queryChannels() ([]int64, error) {
 	return res, err
 }
 
-func queryHaveRead(userID, chID int64) (int64, error) {
-	type HaveRead struct {
-		UserID    int64     `db:"user_id"`
-		ChannelID int64     `db:"channel_id"`
-		MessageID int64     `db:"message_id"`
-		UpdatedAt time.Time `db:"updated_at"`
-		CreatedAt time.Time `db:"created_at"`
-	}
-	h := HaveRead{}
-
-	err := db.Get(&h, "SELECT * FROM haveread WHERE user_id = ? AND channel_id = ?",
-		userID, chID)
-
-	if err == sql.ErrNoRows {
-		return 0, nil
-	} else if err != nil {
-		return 0, err
-	}
-	return h.MessageID, nil
-}
-
 func fetchUnread(c echo.Context) error {
 	userID := sessUserID(c)
 	if userID == 0 {
 		return c.NoContent(http.StatusForbidden)
 	}
 
-	time.Sleep(time.Second)
+	//time.Sleep(time.Second)
 
 	channels, err := queryChannels()
 	if err != nil {
@@ -453,13 +436,13 @@ func fetchUnread(c echo.Context) error {
 	resp := []map[string]interface{}{}
 
 	for _, chID := range channels {
-		lastID, err := queryHaveRead(userID, chID)
-		if err != nil {
-			return err
-		}
+		lastID, flag := lastRead[Read{
+			UserID:    userID,
+			ChannelID: chID,
+		}]
 
 		var cnt int64
-		if lastID > 0 {
+		if flag {
 			err = db.Get(&cnt,
 				"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ? AND ? < id",
 				chID, lastID)
@@ -703,7 +686,9 @@ func main() {
 
 	e := echo.New()
 
+	lastRead = map[Read]int64{}
 	funcs := template.FuncMap{
+
 		"add":    tAdd,
 		"xrange": tRange,
 	}
