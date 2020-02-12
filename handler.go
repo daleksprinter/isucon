@@ -4,13 +4,13 @@ import (
 	"crypto/sha1"
 	"database/sql"
 	"fmt"
+	"github.com/gomodule/redigo/redis"
+	"github.com/labstack/echo"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/labstack/echo"
 )
 
 func getChannel(c echo.Context) error {
@@ -74,11 +74,10 @@ func getMessage(c echo.Context) error {
 	}
 
 	if len(messages) > 0 {
-		r := Read{
-			UserID:    userID,
-			ChannelID: chanID,
+		err := setLastReadID(userID, chanID, messages[0].ID)
+		if err != nil {
+			return err
 		}
-		lastRead[r] = messages[0].ID
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -125,20 +124,16 @@ func fetchUnread(c echo.Context) error {
 	resp := []map[string]interface{}{}
 
 	for _, chID := range channels {
-		lastID, flag := lastRead[Read{
-			UserID:    userID,
-			ChannelID: chID,
-		}]
+		id, err := getLastReadID(userID, chID)
+		if err != nil && err != redis.ErrNil {
+			return err
+		}
 
 		var cnt int64
-		if flag {
-			err = db.Get(&cnt,
-				"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ? AND ? < id",
-				chID, lastID)
+		if err == nil {
+			cnt, err = getUnreadMessageCount(chID, id)
 		} else {
-			err = db.Get(&cnt,
-				"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
-				chID)
+			cnt, err = getMessageCount(chID)
 		}
 		if err != nil {
 			return err
@@ -176,7 +171,7 @@ func getHistory(c echo.Context) error {
 
 	const N = 20
 	var cnt int64
-	err = db.Get(&cnt, "SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?", chID)
+	cnt, err = getMessageCount(chID)
 	if err != nil {
 		return err
 	}

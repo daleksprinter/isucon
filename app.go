@@ -4,6 +4,12 @@ import (
 	crand "crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"github.com/gomodule/redigo/redis"
+	"github.com/gorilla/sessions"
+	"github.com/jmoiron/sqlx"
+	"github.com/labstack/echo"
+	"github.com/labstack/echo-contrib/session"
+	"github.com/labstack/echo/middleware"
 	"html/template"
 	"io"
 	"log"
@@ -11,12 +17,6 @@ import (
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/gorilla/sessions"
-	"github.com/jmoiron/sqlx"
-	"github.com/labstack/echo"
-	"github.com/labstack/echo-contrib/session"
-	"github.com/labstack/echo/middleware"
 
 	_ "net/http/pprof"
 )
@@ -33,7 +33,7 @@ type Read struct {
 var (
 	db            *sqlx.DB
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
-	lastRead      map[Read]int64
+	pool          *redis.Pool
 )
 
 type Renderer struct {
@@ -83,13 +83,38 @@ func init() {
 	db.SetMaxOpenConns(20)
 	db.SetConnMaxLifetime(5 * time.Minute)
 	log.Printf("Succeeded to connect db.")
+
+	pool = &redis.Pool{
+		MaxIdle:     10,
+		IdleTimeout: 10 * time.Second,
+		Dial: func() (redis.Conn, error) {
+			return redis.DialURL("redis://localhost:6379")
+		},
+	}
 }
 func getInitialize(c echo.Context) error {
 	db.MustExec("DELETE FROM user WHERE id > 1000")
 	db.MustExec("DELETE FROM image WHERE id > 1001")
 	db.MustExec("DELETE FROM channel WHERE id > 10")
 	db.MustExec("DELETE FROM message WHERE id > 10000")
-	db.MustExec("DELETE FROM haveread")
+
+	conn := pool.Get()
+	defer conn.Close()
+	conn.Do("FLUSHALL")
+
+	messages := []Message{}
+	err := db.Select(&messages, "select * from message order by id")
+
+	if err != nil {
+		return err
+	}
+
+	for _, msg := range messages {
+		err := setMessageID(&msg)
+		if err != nil {
+			return err
+		}
+	}
 	return c.String(204, "")
 }
 
@@ -112,7 +137,6 @@ func main() {
 
 	e := echo.New()
 
-	lastRead = map[Read]int64{}
 	funcs := template.FuncMap{
 
 		"add":    tAdd,

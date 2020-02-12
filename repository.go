@@ -20,5 +20,22 @@ func addMessage(channelID, userID int64, content string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	m := Message{}
+	err = db.Get(&m, "select * from message where id = ?", id)
+	if err != nil {
+		return 0, err
+	}
+
+	err = setMessageID(&m)
+	if err != nil {
+		return 0, err
+	}
+
+	return id, nil
 }
