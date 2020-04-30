@@ -838,19 +838,19 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 }
 
 type ItemCategSeller struct {
-	ItemID          int64     `json:"id" item_db:"id"`
-	ItemSellerID    int64     `json:"seller_id" db:"item_seller_id"`
-	Itembuyerid     int64     `json:"buyer_id" db:"item_buyer_id"`
-	ItemStatus      string    `json:"status" db:"item_status"`
-	ItemName        string    `json:"name" db:"item_name"`
-	ItemPrice       int       `json:"price" db:"item_price"`
-	ItemDescription string    `json:"description" db:"item_description"`
-	ItemImageName   string    `json:"image_name" db:"item_image_name"`
-	ItemCategoryID  int       `json:"category_id" db:"item_category_id"`
-	ItemCreatedAt   time.Time `json:"-" db:"item_created_at"`
-	ItemUpdatedAt   time.Time `json:"-" db:"item_updated_at"`
+	ID          int64     `json:"id" db:"item_id"`
+	SellerID    int64     `json:"seller_id" db:"item_seller_id"`
+	BuyerID     int64     `json:"buyer_id" db:"item_buyer_id"`
+	Status      string    `json:"status" db:"item_status"`
+	Name        string    `json:"name" db:"item_name"`
+	Price       int       `json:"price" db:"item_price"`
+	Description string    `json:"description" db:"item_description"`
+	ImageName   string    `json:"image_name" db:"item_image_name"`
+	CategoryID  int       `json:"category_id" db:"item_category_id"`
+	CreatedAt   time.Time `json:"-" db:"item_created_at"`
+	UpdatedAt   time.Time `json:"-" db:"item_updated_at"`
 
-	UserID             int64     `json:"id" db:"user_id"`
+	UserID             int64     `json:"user_id" db:"user_id"`
 	UserAccountName    string    `json:"account_name" db:"user_account_name"`
 	UserHashedPassword []byte    `json:"-" db:"user_hashed_password"`
 	UserAddress        string    `json:"address,omitempty" db:"user_address"`
@@ -858,7 +858,7 @@ type ItemCategSeller struct {
 	UserLastBump       time.Time `json:"-" db:"user_last_bump"`
 	UserCreatedAt      time.Time `json:"-" db:"user_created_at"`
 
-	CategoryID                 int    `json:"id" db:"category_id"`
+	CategoryCategoryID         int    `json:"category_category_id" db:"category_id"`
 	CategoryParentID           int    `json:"parent_id" db:"category_parent_id"`
 	CategoryCategoryName       string `json:"category_name" db:"category_category_name"`
 	CategoryParentCategoryName string `json:"parent_category_name,omitempty" db:"-"`
@@ -895,11 +895,20 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tx := dbx.MustBegin()
-	items := []Item{}
+	items := []ItemCategSeller{}
 	if itemID > 0 && createdAt > 0 {
 		// paging
+
+		query := `
+			SELECT items.id as item_id, items.seller_id as item_seller_id, items.buyer_id as item_buyer_id, items.status as item_status, items.name as item_name, items.price as item_price, items.description as item_description, items.image_name as item_image_name, items.category_id as item_category_id, items.created_at as item_created_at, items.updated_at as item_updated_at, users.id as user_id, users.account_name as user_account_name, users.hashed_password as user_hashed_password, users.address as user_address, users.num_sell_items as user_num_sell_items, users.last_bump as user_last_bump, users.created_at as user_created_at, categories.id as category_id, categories.parent_id as category_parent_id, categories.category_name as category_category_name 
+			From items
+			Join categories on items.category_id = categories.id
+			Join users on items.seller_id = users.id
+			WHERE (items.seller_id = ? OR items.buyer_id = ?) AND items.status IN (?, ?, ?, ?, ?) AND (items.created_at < ? OR (items.created_at <= ? AND items.id < ?))
+			ORDER BY items.created_at DESC, items.id DESC LIMIT ?
+		`
 		err := tx.Select(&items,
-			"SELECT * FROM `items` WHERE (`seller_id` = ? OR `buyer_id` = ?) AND `status` IN (?,?,?,?,?) AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
+			query,
 			user.ID,
 			user.ID,
 			ItemStatusOnSale,
@@ -920,8 +929,15 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// 1st page
+		query := `
+			SELECT items.id as item_id, items.seller_id as item_seller_id, items.buyer_id as item_buyer_id, items.status as item_status, items.name as item_name, items.price as item_price, items.description as item_description, items.image_name as item_image_name, items.category_id as item_category_id, items.created_at as item_created_at, items.updated_at as item_updated_at, users.id as user_id, users.account_name as user_account_name, users.hashed_password as user_hashed_password, users.address as user_address, users.num_sell_items as user_num_sell_items, users.last_bump as user_last_bump, users.created_at as user_created_at, categories.id as category_id, categories.parent_id as category_parent_id, categories.category_name as category_category_name 
+			From items
+			Join categories on items.category_id = categories.id
+			Join users on items.seller_id = users.id
+			WHERE (items.seller_id = ? OR items.buyer_id = ?) AND items.status IN (?,?,?,?,?) ORDER BY items.created_at DESC, items.id DESC LIMIT ?
+		`
 		err := tx.Select(&items,
-			"SELECT * FROM `items` WHERE (`seller_id` = ? OR `buyer_id` = ?) AND `status` IN (?,?,?,?,?) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
+			query,
 			user.ID,
 			user.ID,
 			ItemStatusOnSale,
@@ -941,17 +957,27 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 
 	itemDetails := []ItemDetail{}
 	for _, item := range items {
-		seller, err := getUserSimpleByID(tx, item.SellerID)
-		if err != nil {
-			outputErrorMsg(w, http.StatusNotFound, "seller not found")
-			tx.Rollback()
-			return
+
+		seller := UserSimple{
+			ID:           item.UserID,
+			AccountName:  item.UserAccountName,
+			NumSellItems: item.UserNumSellItems,
 		}
-		category, err := getCategoryByID(tx, item.CategoryID)
-		if err != nil {
-			outputErrorMsg(w, http.StatusNotFound, "category not found")
-			tx.Rollback()
-			return
+
+		category := Category{
+			ID:           item.CategoryID,
+			ParentID:     item.CategoryParentID,
+			CategoryName: item.CategoryCategoryName,
+		}
+
+		if category.ParentID != 0 {
+			parentCategory, err := getCategoryByID(tx, category.ParentID)
+			if err != nil {
+				outputErrorMsg(w, http.StatusNotFound, "category not found")
+				tx.Rollback()
+				return
+			}
+			category.ParentCategoryName = parentCategory.CategoryName
 		}
 
 		itemDetail := ItemDetail{
