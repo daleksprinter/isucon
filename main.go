@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/garyburd/redigo/redis"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
@@ -63,6 +64,7 @@ var (
 	templates *template.Template
 	dbx       *sqlx.DB
 	store     sessions.Store
+	pool      *redis.Pool
 )
 
 type Config struct {
@@ -268,6 +270,48 @@ type resSetting struct {
 	Categories        []Category `json:"categories"`
 }
 
+func AddCategory(conn redis.Conn, cat Category) error {
+	bytes, err := json.Marshal(cat)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Do("RPUSH", "categories", bytes)
+	return err
+}
+
+func GetCategories(conn redis.Conn) (map[int]Category, error) {
+	categories := map[int]Category{}
+	byteSlices, err := redis.ByteSlices(conn.Do("LRANGE", "categories", 0, -1))
+	if err != nil {
+		return categories, err
+	}
+	for _, bytes := range byteSlices {
+		cat := Category{}
+		json.Unmarshal(bytes, &cat)
+		categories[cat.ID] = cat
+	}
+	return categories, nil
+}
+
+func initializeRedis() {
+	conn := pool.Get()
+	defer conn.Close()
+	conn.Do("FLUSHALL")
+
+	categories := []Category{}
+	err := dbx.Select(&categories, "SELECT * FROM categories")
+	if err != nil {
+		panic(err)
+	}
+
+	for _, cat := range categories {
+		err := AddCategory(conn, cat)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
 func init() {
 	store = sessions.NewCookieStore([]byte("abc"))
 
@@ -320,6 +364,14 @@ func main() {
 	defer dbx.Close()
 
 	mux := goji.NewMux()
+
+	pool = &redis.Pool{
+		MaxIdle:     10,
+		IdleTimeout: 10 * time.Second,
+		Dial: func() (redis.Conn, error) {
+			return redis.DialURL("redis://localhost:6379")
+		},
+	}
 
 	// API
 	mux.HandleFunc(pat.Post("/initialize"), postInitialize)
@@ -408,7 +460,16 @@ func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err
 }
 
 func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
-	err = sqlx.Get(q, &category, "SELECT * FROM `categories` WHERE `id` = ?", categoryID)
+
+	conn := pool.Get()
+	defer conn.Close()
+
+	categories, err := GetCategories(conn)
+	if err != nil {
+		return Category{}, err
+	}
+	category = categories[categoryID]
+
 	if category.ParentID != 0 {
 		parentCategory, err := getCategoryByID(q, category.ParentID)
 		if err != nil {
@@ -453,6 +514,9 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
+
+	initializeRedis()
+
 	ri := reqInitialize{}
 
 	err := json.NewDecoder(r.Body).Decode(&ri)
