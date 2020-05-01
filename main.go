@@ -15,7 +15,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/garyburd/redigo/redis"
+	_ "net/http/pprof"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
@@ -64,7 +65,7 @@ var (
 	templates *template.Template
 	dbx       *sqlx.DB
 	store     sessions.Store
-	pool      *redis.Pool
+	cats      map[int]Category
 )
 
 type Config struct {
@@ -270,49 +271,12 @@ type resSetting struct {
 	Categories        []Category `json:"categories"`
 }
 
-func AddCategory(conn redis.Conn, cat Category) error {
-	bytes, err := json.Marshal(cat)
-	if err != nil {
-		return err
-	}
-	_, err = conn.Do("RPUSH", "categories", bytes)
-	return err
-}
-
-func GetCategories(conn redis.Conn) (map[int]Category, error) {
-	categories := map[int]Category{}
-	byteSlices, err := redis.ByteSlices(conn.Do("LRANGE", "categories", 0, -1))
-	if err != nil {
-		return categories, err
-	}
-	for _, bytes := range byteSlices {
-		cat := Category{}
-		json.Unmarshal(bytes, &cat)
-		categories[cat.ID] = cat
-	}
-	return categories, nil
-}
-
-func initializeRedis() {
-	conn := pool.Get()
-	defer conn.Close()
-	conn.Do("FLUSHALL")
-
-	categories := []Category{}
-	err := dbx.Select(&categories, "SELECT * FROM categories")
-	if err != nil {
-		panic(err)
-	}
-
-	for _, cat := range categories {
-		err := AddCategory(conn, cat)
-		if err != nil {
-			panic(err)
-		}
-	}
-}
-
 func init() {
+	go func() {
+		fmt.Println("pprof started")
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	store = sessions.NewCookieStore([]byte("abc"))
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
@@ -323,6 +287,139 @@ func init() {
 }
 
 func main() {
+	cats = map[int]Category{
+		1: Category{
+			ID: 1, ParentID: 0, CategoryName: "ソファー",
+		},
+		2: Category{
+			2, 1, "一人掛けソファー", "ソファー",
+		},
+		3: Category{
+			3, 1, "二人掛けソファー", "ソファー",
+		},
+		4: Category{
+			4, 1, "コーナーソファー", "ソファー",
+		},
+		5: Category{
+			5, 1, "二段ソファー", "ソファー",
+		},
+		6: Category{
+			6, 1, "ソファーベッド", "ソファー",
+		},
+		10: Category{
+			ID: 10, ParentID: 0, CategoryName: "家庭用チェア",
+		},
+		11: Category{
+			11, 10, "スツール", "家庭用チェア",
+		},
+		12: Category{
+			12, 10, "クッションスツール", "家庭用チェア",
+		},
+		13: Category{
+			13, 10, "ダイニングチェア", "家庭用チェア",
+		},
+		14: Category{
+			14, 10, "リビングチェア", "家庭用チェア",
+		},
+		15: Category{
+			15, 10, "カウンターチェア", "家庭用チェア",
+		},
+		20: Category{
+			ID: 20, ParentID: 0, CategoryName: "キッズチェア",
+		},
+		21: Category{
+			21, 20, "学習チェア", "キッズチェア",
+		},
+		22: Category{
+			22, 20, "ベビーソファ", "キッズチェア",
+		},
+		23: Category{
+			23, 20, "キッズハイチェア", "キッズチェア",
+		},
+		24: Category{
+			24, 20, "テーブルチェア", "キッズチェア",
+		},
+		30: Category{
+			ID: 30, ParentID: 0, CategoryName: "オフィスチェア",
+		},
+		31: Category{
+			31, 30, "デスクチェア", "オフィスチェア",
+		},
+		32: Category{
+			32, 30, "ビジネスチェア", "オフィスチェア",
+		},
+		33: Category{
+			33, 30, "回転チェア", "オフィスチェア",
+		},
+		34: Category{
+			34, 30, "リクライニングチェア", "オフィスチェア",
+		},
+		35: Category{
+			35, 30, "投擲用椅子", "オフィスチェア",
+		},
+		40: Category{
+			ID: 40, ParentID: 0, CategoryName: "折りたたみ椅子",
+		},
+		41: Category{
+			41, 40, "パイプ椅子", "折りたたみ椅子",
+		},
+		42: Category{
+			42, 40, "木製折りたたみ椅子", "折りたたみ椅子",
+		},
+		43: Category{
+			43, 40, "キッチンチェア", "折りたたみ椅子",
+		},
+		44: Category{
+			44, 40, "アウトドアチェア", "折りたたみ椅子",
+		},
+		45: Category{
+			45, 40, "作業椅子", "折りたたみ椅子",
+		},
+		50: Category{
+			ID: 50, ParentID: 0, CategoryName: "ベンチ",
+		},
+		51: Category{
+			51, 50, "一人掛けベンチ", "ベンチ",
+		},
+		52: Category{
+			52, 50, "二人掛けベンチ", "ベンチ",
+		},
+		53: Category{
+			53, 50, "アウトドア用ベンチ", "ベンチ",
+		},
+		54: Category{
+			54, 50, "収納付きベンチ", "ベンチ",
+		},
+		55: Category{
+			55, 50, "背もたれ付きベンチ", "ベンチ",
+		},
+		56: Category{
+			56, 50, "ベンチマーク", "ベンチ",
+		},
+		60: Category{
+			ID: 60, ParentID: 0, CategoryName: "座椅子",
+		},
+		61: Category{
+			61, 60, "和風座椅子", "座椅子",
+		},
+		62: Category{
+			62, 60, "高座椅子", "座椅子",
+		},
+		63: Category{
+			63, 60, "ゲーミング座椅子", "座椅子",
+		},
+		64: Category{
+			64, 60, "ロッキングチェア", "座椅子",
+		},
+		65: Category{
+			65, 60, "座布団", "座椅子",
+		},
+		66: Category{
+			66, 60, "空気椅子", "座椅子",
+		},
+	}
+	fmt.Println(cats)
+
 	host := os.Getenv("MYSQL_HOST")
 	if host == "" {
 		host = "127.0.0.1"
@@ -365,14 +462,6 @@ func main() {
 
 	mux := goji.NewMux()
 
-	pool = &redis.Pool{
-		MaxIdle:     10,
-		IdleTimeout: 10 * time.Second,
-		Dial: func() (redis.Conn, error) {
-			return redis.DialURL("redis://localhost:6379")
-		},
-	}
-
 	// API
 	mux.HandleFunc(pat.Post("/initialize"), postInitialize)
 	mux.HandleFunc(pat.Get("/new_items.json"), getNewItems)
@@ -409,6 +498,7 @@ func main() {
 	// Assets
 	mux.Handle(pat.Get("/*"), http.FileServer(http.Dir("../public")))
 	log.Fatal(http.ListenAndServe(":8000", mux))
+
 }
 
 func getSession(r *http.Request) *sessions.Session {
@@ -449,11 +539,11 @@ func getUser(r *http.Request) (user User, errCode int, errMsg string) {
 
 func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err error) {
 	user := User{}
-	err = sqlx.Get(q, &user, "SELECT * FROM `users` WHERE `id` = ?", userID)
+	err = sqlx.Get(q, &user, "SELECT account_name, num_sell_items FROM `users` WHERE `id` = ?", userID)
 	if err != nil {
 		return userSimple, err
 	}
-	userSimple.ID = user.ID
+	userSimple.ID = userID
 	userSimple.AccountName = user.AccountName
 	userSimple.NumSellItems = user.NumSellItems
 	return userSimple, err
@@ -461,23 +551,7 @@ func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err
 
 func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
 
-	conn := pool.Get()
-	defer conn.Close()
-
-	categories, err := GetCategories(conn)
-	if err != nil {
-		return Category{}, err
-	}
-	category = categories[categoryID]
-
-	if category.ParentID != 0 {
-		parentCategory, err := getCategoryByID(q, category.ParentID)
-		if err != nil {
-			return category, err
-		}
-		category.ParentCategoryName = parentCategory.CategoryName
-	}
-	return category, err
+	return cats[categoryID], nil
 }
 
 func getConfigByName(name string) (string, error) {
@@ -514,8 +588,6 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
-
-	initializeRedis()
 
 	ri := reqInitialize{}
 
