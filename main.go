@@ -1000,6 +1000,40 @@ type ItemCategSeller struct {
 	CategoryParentCategoryName string `json:"parent_category_name,omitempty" db:"-"`
 }
 
+func getUsersIDListFromItems(items []Item) (idList []int64) {
+
+	uniqueIDs := map[int64]bool{}
+
+	for _, item := range items {
+		uniqueIDs[item.SellerID] = true
+	}
+
+	for id, _ := range uniqueIDs {
+		idList = append(idList, id)
+	}
+	return
+}
+
+func getSimpleUsersByIDList(q sqlx.Queryer, idList []int64) (userSimples map[int64]UserSimple, err error) {
+	tmp := `SELECT account_name, num_sell_items FROM users IN (?)`
+	query, _, err := sqlx.In(tmp, idList)
+	if err != nil {
+		return
+	}
+
+	simpUsers := []UserSimple{}
+	err = dbx.Select(&simpUsers, query)
+	if err != nil {
+		return
+	}
+
+	for _, usr := range simpUsers {
+		userSimples[usr.ID] = usr
+	}
+
+	return
+}
+
 func getTransactions(w http.ResponseWriter, r *http.Request) {
 
 	user, errCode, errMsg := getUser(r)
@@ -1076,13 +1110,18 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	itemDetails := []ItemDetail{}
+
+	users, err := getSimpleUsersByIDList(tx, getUsersIDListFromItems(items))
+	if err != nil {
+		outputErrorMsg(w, http.StatusInternalServerError, "Fetch Simple Users by ID List failed")
+		tx.Rollback()
+		return
+	}
+
 	for _, item := range items {
-		seller, err := getUserSimpleByID(tx, item.SellerID)
-		if err != nil {
-			outputErrorMsg(w, http.StatusNotFound, "seller not found")
-			tx.Rollback()
-			return
-		}
+
+		seller := users[item.SellerID]
+
 		category, err := getCategoryByID(tx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
