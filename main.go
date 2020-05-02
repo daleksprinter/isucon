@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "net/http/pprof"
@@ -84,9 +85,9 @@ type User struct {
 }
 
 type UserSimple struct {
-	ID           int64  `json:"id"`
-	AccountName  string `json:"account_name"`
-	NumSellItems int    `json:"num_sell_items"`
+	ID           int64  `json:"id" db:"id"`
+	AccountName  string `json:"account_name" db:"account_name"`
+	NumSellItems int    `json:"num_sell_items" db:"num_sell_items"`
 }
 
 type Item struct {
@@ -1000,7 +1001,7 @@ type ItemCategSeller struct {
 	CategoryParentCategoryName string `json:"parent_category_name,omitempty" db:"-"`
 }
 
-func getUsersIDListFromItems(items []Item) (idList []int64) {
+func getUsersIDListFromItems(items []Item) (idList []string) {
 
 	uniqueIDs := map[int64]bool{}
 
@@ -1009,28 +1010,8 @@ func getUsersIDListFromItems(items []Item) (idList []int64) {
 	}
 
 	for id, _ := range uniqueIDs {
-		idList = append(idList, id)
+		idList = append(idList, strconv.FormatInt(id, 10))
 	}
-	return
-}
-
-func getSimpleUsersByIDList(q sqlx.Queryer, idList []int64) (userSimples map[int64]UserSimple, err error) {
-	tmp := `SELECT account_name, num_sell_items FROM users IN (?)`
-	query, _, err := sqlx.In(tmp, idList)
-	if err != nil {
-		return
-	}
-
-	simpUsers := []UserSimple{}
-	err = dbx.Select(&simpUsers, query)
-	if err != nil {
-		return
-	}
-
-	for _, usr := range simpUsers {
-		userSimples[usr.ID] = usr
-	}
-
 	return
 }
 
@@ -1072,11 +1053,6 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			"SELECT * FROM `items` WHERE (`seller_id` = ? OR `buyer_id` = ?) AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
 			user.ID,
 			user.ID,
-			ItemStatusOnSale,
-			ItemStatusTrading,
-			ItemStatusSoldOut,
-			ItemStatusCancel,
-			ItemStatusStop,
 			time.Unix(createdAt, 0),
 			time.Unix(createdAt, 0),
 			itemID,
@@ -1094,11 +1070,6 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			"SELECT * FROM `items` WHERE (`seller_id` = ? OR `buyer_id` = ?)  ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
 			user.ID,
 			user.ID,
-			ItemStatusOnSale,
-			ItemStatusTrading,
-			ItemStatusSoldOut,
-			ItemStatusCancel,
-			ItemStatusStop,
 			TransactionsPerPage+1,
 		)
 		if err != nil {
@@ -1111,13 +1082,27 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 
 	itemDetails := []ItemDetail{}
 
-	users, err := getSimpleUsersByIDList(tx, getUsersIDListFromItems(items))
+	//get simpleUsers from database;
+
+	ids := getUsersIDListFromItems(items)
+	tmp := `SELECT id, account_name, num_sell_items FROM users WHERE id IN (` + strings.Join(ids, `,`) + `)`
+	log.Println(tmp)
+	simpUsers := []UserSimple{}
+	err = tx.Select(&simpUsers, tmp)
 	if err != nil {
-		outputErrorMsg(w, http.StatusInternalServerError, "Fetch Simple Users by ID List failed")
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
 		return
+
 	}
 
+	users := map[int64]UserSimple{}
+	for _, usr := range simpUsers {
+		users[usr.ID] = usr
+	}
+
+	//make items
 	for _, item := range items {
 
 		seller := users[item.SellerID]
