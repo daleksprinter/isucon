@@ -976,33 +976,6 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(rui)
 }
 
-type ItemCategSeller struct {
-	ID          int64     `json:"id" db:"item_id"`
-	SellerID    int64     `json:"seller_id" db:"item_seller_id"`
-	BuyerID     int64     `json:"buyer_id" db:"item_buyer_id"`
-	Status      string    `json:"status" db:"item_status"`
-	Name        string    `json:"name" db:"item_name"`
-	Price       int       `json:"price" db:"item_price"`
-	Description string    `json:"description" db:"item_description"`
-	ImageName   string    `json:"image_name" db:"item_image_name"`
-	CategoryID  int       `json:"category_id" db:"item_category_id"`
-	CreatedAt   time.Time `json:"-" db:"item_created_at"`
-	UpdatedAt   time.Time `json:"-" db:"item_updated_at"`
-
-	UserID             int64     `json:"user_id" db:"user_id"`
-	UserAccountName    string    `json:"account_name" db:"user_account_name"`
-	UserHashedPassword []byte    `json:"-" db:"user_hashed_password"`
-	UserAddress        string    `json:"address,omitempty" db:"user_address"`
-	UserNumSellItems   int       `json:"num_sell_items" db:"user_num_sell_items"`
-	UserLastBump       time.Time `json:"-" db:"user_last_bump"`
-	UserCreatedAt      time.Time `json:"-" db:"user_created_at"`
-
-	CategoryCategoryID         int    `json:"category_category_id" db:"category_id"`
-	CategoryParentID           int    `json:"parent_id" db:"category_parent_id"`
-	CategoryCategoryName       string `json:"category_name" db:"category_category_name"`
-	CategoryParentCategoryName string `json:"parent_category_name,omitempty" db:"-"`
-}
-
 func getUsersIDListFromItems(items []Item) (idList []string) {
 
 	uniqueIDs := map[int64]bool{}
@@ -1052,12 +1025,16 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	if itemID > 0 && createdAt > 0 {
 		// paging
 		err := tx.Select(&items,
-			"SELECT * FROM `items` WHERE (`seller_id` = ? OR `buyer_id` = ?) AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
-			user.ID,
+			"SELECT * FROM `items` WHERE `seller_id` = ?  AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) UNION SELECT * FROM `items` WHERE `buyer_id` = ?  AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?))  ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
 			user.ID,
 			time.Unix(createdAt, 0),
 			time.Unix(createdAt, 0),
 			itemID,
+			user.ID,
+			time.Unix(createdAt, 0),
+			time.Unix(createdAt, 0),
+			itemID,
+
 			TransactionsPerPage+1,
 		)
 		if err != nil {
@@ -1069,7 +1046,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		err := tx.Select(&items,
-			"SELECT * FROM `items` WHERE (`seller_id` = ? OR `buyer_id` = ?)  ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
+			"SELECT * FROM `items` WHERE `seller_id` = ? UNION  SELECT * FROM `items` WHERE `buyer_id` = ? ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
 			user.ID,
 			user.ID,
 			TransactionsPerPage+1,
