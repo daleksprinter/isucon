@@ -423,6 +423,7 @@ func main() {
 		},
 	}
 	fmt.Println(cats)
+	userMap = map[int64]User{}
 	userMutex = sync.RWMutex{}
 
 	host := os.Getenv("MYSQL_HOST")
@@ -529,9 +530,10 @@ func getUsersForInitialize() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	userMutex.Lock()
+	userMutex.Unlock()
 	userMap = make(map[int64]*User)
 	for _, usr := range users {
-		fmt.Println(&usr)
 		userMap[usr.ID] = &usr
 	}
 }
@@ -543,7 +545,16 @@ func getUser(r *http.Request) (user User, errCode int, errMsg string) {
 		return user, http.StatusNotFound, "no session"
 	}
 
-	err := dbx.Get(&user, "SELECT * FROM users WHERE id = ?", userID)
+	userIDint := userID.(int64)
+
+	userMutex.RLock()
+	if user, ok = userMap[userIDint]; ok {
+		userMutex.RUnlock()
+		return user, http.StatusOK, ""
+	}
+	userMutex.RUnlock()
+
+	err := dbx.Get(&user, "SELECT * FROM `users` WHERE `id` = ?", userID)
 	if err == sql.ErrNoRows {
 		return user, http.StatusNotFound, "user not found"
 	}
@@ -551,6 +562,10 @@ func getUser(r *http.Request) (user User, errCode int, errMsg string) {
 		log.Print(err)
 		return user, http.StatusInternalServerError, "db error"
 	}
+
+	userMutex.Lock()
+	defer userMutex.Unlock()
+	userMap[user.ID] = user
 
 	return user, http.StatusOK, ""
 }
@@ -569,14 +584,15 @@ func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err
 	}
 	userMutex.RUnlock()
 
-	userMutex.Lock()
-	defer userMutex.Unlock()
 	err = sqlx.Get(q, &user, "SELECT * FROM `users` WHERE `id` = ?", userID)
 	if err != nil {
 		return userSimple, err
 	}
 
-	userMap[user.ID] = &user
+	userMutex.Lock()
+	defer userMutex.Unlock()
+	userMap[user.ID] = user
+
 	userSimple.ID = userID
 	userSimple.AccountName = user.AccountName
 	userSimple.NumSellItems = user.NumSellItems
@@ -665,7 +681,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 
 	res := resInitialize{
 		// キャンペーン実施時には還元率の設定を返す。詳しくはマニュアルを参照のこと。
-		Campaign: 0,
+		Campaign: 1,
 		// 実装言語を返す
 		Language: "Go",
 	}
@@ -2208,7 +2224,6 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userMutex.Lock()
 	now := time.Now()
 	_, err = tx.Exec("UPDATE `users` SET `num_sell_items`=?, `last_bump`=? WHERE `id`=?",
 		seller.NumSellItems+1,
@@ -2223,9 +2238,10 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 	}
 	tx.Commit()
 
-	userMap[seller.ID].NumSellItems = seller.NumSellItems + 1
+	userMutex.Lock()
+	defer userMutex.Unlock()
+	userMap[seller.ID].NumSellItems++
 	userMap[seller.ID].LastBump = now
-	userMutex.Unlock()
 
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(resSell{ID: itemID})
@@ -2335,10 +2351,6 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tx.Commit()
-
-	userMutex.Lock()
-	userMap[seller.ID].LastBump = now
-	userMutex.Unlock()
 
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(&resItemEdit{
@@ -2485,8 +2497,6 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 		AccountName: accountName,
 		Address:     address,
 	}
-
-	fmt.Println(getUserSimpleByID(dbx, userID))
 
 	session := getSession(r)
 	session.Values["user_id"] = u.ID
