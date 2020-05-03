@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	_ "net/http/pprof"
@@ -277,7 +276,6 @@ type resSetting struct {
 
 func init() {
 	go func() {
-		fmt.Println("pprof started")
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
@@ -422,7 +420,6 @@ func main() {
 			66, 60, "空気椅子", "座椅子",
 		},
 	}
-	fmt.Println(cats)
 	userMutex = sync.RWMutex{}
 
 	host := os.Getenv("MYSQL_HOST")
@@ -531,7 +528,6 @@ func getUsersForInitialize() {
 	}
 	userMap = make(map[int64]*User)
 	for _, usr := range users {
-		fmt.Println(&usr)
 		userMap[usr.ID] = &usr
 	}
 }
@@ -553,6 +549,27 @@ func getUser(r *http.Request) (user User, errCode int, errMsg string) {
 	}
 
 	return user, http.StatusOK, ""
+}
+
+func getUserByID(q sqlx.Queryer, userID int64) (user User, err error) {
+
+	userMutex.RLock()
+	if usr, ok := userMap[userID]; ok {
+		userMutex.RUnlock()
+		user = *usr
+		return
+	}
+	userMutex.RUnlock()
+
+	userMutex.Lock()
+	defer userMutex.Unlock()
+	err = sqlx.Get(q, &user, "SELECT * FROM `users` WHERE `id` = ?", userID)
+	if err != nil {
+		return
+	}
+
+	userMap[user.ID] = &user
+	return
 }
 
 func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err error) {
@@ -1096,30 +1113,16 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 
 	itemDetails := []ItemDetail{}
 
-	//get simpleUsers from database;
-
-	ids := getUsersIDListFromItems(items)
-	tmp := `SELECT id, account_name, num_sell_items FROM users WHERE id IN (` + strings.Join(ids, `,`) + `)`
-	log.Println(tmp)
-	simpUsers := []UserSimple{}
-	err = tx.Select(&simpUsers, tmp)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-
-	}
-
-	users := map[int64]UserSimple{}
-	for _, usr := range simpUsers {
-		users[usr.ID] = usr
-	}
-
 	//make items
 	for _, item := range items {
 
-		seller := users[item.SellerID]
+		seller, err := getUserSimpleByID(tx, item.SellerID)
+		if err != nil {
+			outputErrorMsg(w, http.StatusNotFound, "seller not found")
+			tx.Rollback()
+			return
+
+		}
 
 		category, err := getCategoryByID(tx, item.CategoryID)
 		if err != nil {
@@ -1515,6 +1518,8 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		tx.Rollback()
 		return
 	}
+
+	//	seller, err := getUserByID(tx, targetItem.SellerID)
 
 	seller := User{}
 	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? FOR UPDATE", targetItem.SellerID)
@@ -2208,7 +2213,6 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userMutex.Lock()
 	now := time.Now()
 	_, err = tx.Exec("UPDATE `users` SET `num_sell_items`=?, `last_bump`=? WHERE `id`=?",
 		seller.NumSellItems+1,
@@ -2223,6 +2227,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 	}
 	tx.Commit()
 
+	userMutex.Lock()
 	userMap[seller.ID].NumSellItems = seller.NumSellItems + 1
 	userMap[seller.ID].LastBump = now
 	userMutex.Unlock()
@@ -2486,7 +2491,7 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 		Address:     address,
 	}
 
-	fmt.Println(getUserSimpleByID(dbx, userID))
+	getUserSimpleByID(dbx, userID)
 
 	session := getSession(r)
 	session.Values["user_id"] = u.ID
