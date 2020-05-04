@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	_ "net/http/pprof"
@@ -1137,19 +1138,37 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		transEvidsByID[transEvid.ItemID] = transEvid
 	}
 
+	fmt.Println("number of transaction evidences ", len(transEvids))
 	//get api shippment status
-	shipmentstatuses := make(map[int64]string) //map[evidence_id]status
+
+	var wg sync.WaitGroup
+	var shipmentstatus sync.Map
+	var concurrentError atomic.Value
+	wg.Add(len(transEvids))
+
 	for _, evid := range transEvids {
-		ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
-			ReserveID: evid.ReserveID,
-		})
-		if err != nil {
-			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
-			tx.Rollback()
-			return
-		}
-		shipmentstatuses[evid.ID] = ssr.Status
+		go func(t TransactionEvidence) {
+			defer wg.Done()
+			ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
+				ReserveID: t.ReserveID,
+			})
+			if err != nil {
+				concurrentError.Store(err)
+				return
+			}
+			fmt.Println("shipment id ", t.ID, "shipment status", ssr.Status)
+			shipmentstatus.Store(t.ID, ssr.Status)
+		}(evid)
+	}
+
+	wg.Wait()
+
+	cerr := concurrentError.Load()
+	if cerr != nil {
+		log.Print(cerr)
+		outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
+		tx.Rollback()
+		return
 	}
 
 	//generate item details for response
@@ -1201,10 +1220,19 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			itemDetail.Buyer = &buyer
 		}
 
-		itemDetail.TransactionEvidenceID = transEvidsByID[item.ID].ID
-		itemDetail.TransactionEvidenceStatus = transEvidsByID[item.ID].Status
-		itemDetail.ShippingStatus = shipmentstatuses[itemDetail.TransactionEvidenceID]
+		Evid := transEvidsByID[item.ID]
+		if Evid.ID > 0 {
+			itemDetail.TransactionEvidenceID = Evid.ID
+			itemDetail.TransactionEvidenceStatus = Evid.Status
 
+			status, ok := shipmentstatus.Load(Evid.ID)
+			if !ok {
+				outputErrorMsg(w, http.StatusNotFound, "shipping not found")
+				return
+			}
+			itemDetail.ShippingStatus = status.(string)
+
+		}
 		itemDetails = append(itemDetails, itemDetail)
 	}
 
