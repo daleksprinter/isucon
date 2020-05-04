@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "net/http/pprof"
@@ -151,6 +152,8 @@ type TransactionEvidence struct {
 	ItemRootCategoryID int       `json:"item_root_category_id" db:"item_root_category_id"`
 	CreatedAt          time.Time `json:"-" db:"created_at"`
 	UpdatedAt          time.Time `json:"-" db:"updated_at"`
+
+	ReserveID string `json:"-" db:"reserve_id"` //shipping table
 }
 
 type Shipping struct {
@@ -1073,6 +1076,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tx := dbx.MustBegin()
+
+	//getItems
 	items := []Item{}
 	if itemID > 0 && createdAt > 0 {
 		// paging
@@ -1111,9 +1116,44 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	itemDetails := []ItemDetail{}
+	//get transaction evidences with reserve_id(shippings)
+	itemids := []string{}
+	for _, item := range items {
+		itemids = append(itemids, strconv.FormatInt(item.ID, 10))
+	}
+	evid_query := `select t.*, s.reserve_id from transaction_evidences as t join shippings as s on t.id = s.transaction_evidence_id where t.item_id in (` + strings.Join(itemids, `,`) + `)`
 
-	//make items
+	transEvids := []TransactionEvidence{}
+	err = tx.Select(&transEvids, evid_query)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
+		return
+	}
+
+	transEvidsByID := make(map[int64]TransactionEvidence)
+	for _, transEvid := range transEvids {
+		transEvidsByID[transEvid.ItemID] = transEvid
+	}
+
+	//get api shippment status
+	shipmentstatuses := make(map[int64]string) //map[evidence_id]status
+	for _, evid := range transEvids {
+		ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
+			ReserveID: evid.ReserveID,
+		})
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
+			tx.Rollback()
+			return
+		}
+		shipmentstatuses[evid.ID] = ssr.Status
+	}
+
+	//generate item details for response
+	itemDetails := []ItemDetail{}
 	for _, item := range items {
 
 		seller, err := getUserSimpleByID(tx, item.SellerID)
@@ -1161,47 +1201,13 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			itemDetail.Buyer = &buyer
 		}
 
-		transactionEvidence := TransactionEvidence{}
-		err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", item.ID)
-		if err != nil && err != sql.ErrNoRows {
-			// It's able to ignore ErrNoRows
-			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
-			tx.Rollback()
-			return
-		}
-
-		if transactionEvidence.ID > 0 {
-			shipping := Shipping{}
-			err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ?", transactionEvidence.ID)
-			if err == sql.ErrNoRows {
-				outputErrorMsg(w, http.StatusNotFound, "shipping not found")
-				tx.Rollback()
-				return
-			}
-			if err != nil {
-				log.Print(err)
-				outputErrorMsg(w, http.StatusInternalServerError, "db error")
-				tx.Rollback()
-				return
-			}
-			ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
-				ReserveID: shipping.ReserveID,
-			})
-			if err != nil {
-				log.Print(err)
-				outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
-				tx.Rollback()
-				return
-			}
-
-			itemDetail.TransactionEvidenceID = transactionEvidence.ID
-			itemDetail.TransactionEvidenceStatus = transactionEvidence.Status
-			itemDetail.ShippingStatus = ssr.Status
-		}
+		itemDetail.TransactionEvidenceID = transEvidsByID[item.ID].ID
+		itemDetail.TransactionEvidenceStatus = transEvidsByID[item.ID].Status
+		itemDetail.ShippingStatus = shipmentstatuses[itemDetail.TransactionEvidenceID]
 
 		itemDetails = append(itemDetails, itemDetail)
 	}
+
 	tx.Commit()
 
 	hasNext := false
