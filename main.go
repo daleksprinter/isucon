@@ -4,6 +4,7 @@ import (
 	crand "crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -61,7 +62,7 @@ const (
 	ItemsPerPage        = 48
 	TransactionsPerPage = 10
 
-	BcryptCost = 10
+	BcryptCost = 4
 )
 
 var (
@@ -1138,7 +1139,6 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		transEvidsByID[transEvid.ItemID] = transEvid
 	}
 
-	fmt.Println("number of transaction evidences ", len(transEvids))
 	//get api shippment status
 
 	var wg sync.WaitGroup
@@ -1399,7 +1399,7 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tx := dbx.MustBegin()
-	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
+	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? lock in share mode", itemID)
 	if err != nil {
 		log.Print(err)
 
@@ -1526,7 +1526,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	tx := dbx.MustBegin()
 
 	targetItem := Item{}
-	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", rb.ItemID)
+	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? lock in share mode", rb.ItemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "item not found")
 		tx.Rollback()
@@ -1552,10 +1552,8 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//	seller, err := getUserByID(tx, targetItem.SellerID)
-
 	seller := User{}
-	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? FOR UPDATE", targetItem.SellerID)
+	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? lock in share mode", targetItem.SellerID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "seller not found")
 		tx.Rollback()
@@ -1620,74 +1618,88 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scr, err := APIShipmentCreate(getShipmentServiceURL(), &APIShipmentCreateReq{
-		ToAddress:   buyer.Address,
-		ToName:      buyer.AccountName,
-		FromAddress: seller.Address,
-		FromName:    seller.AccountName,
-	})
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
-		tx.Rollback()
+	errChan := make(chan error)
+	shipmentRespChan := make(chan APIShipmentCreateRes)
 
-		return
+	go func() {
+		scr, err := APIShipmentCreate(getShipmentServiceURL(), &APIShipmentCreateReq{
+			ToAddress:   buyer.Address,
+			ToName:      buyer.AccountName,
+			FromAddress: seller.Address,
+			FromName:    seller.AccountName,
+		})
+		if err != nil {
+			errChan <- err
+		}
+		shipmentRespChan <- *scr
+	}()
+
+	go func() {
+		pstr, err := APIPaymentToken(getPaymentServiceURL(), &APIPaymentServiceTokenReq{
+			ShopID: PaymentServiceIsucariShopID,
+			Token:  rb.Token,
+			APIKey: PaymentServiceIsucariAPIKey,
+			Price:  targetItem.Price,
+		})
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		if pstr.Status == "invalid" {
+			errChan <- errors.New("カード情報に誤りがあります")
+			return
+		}
+
+		if pstr.Status == "fail" {
+			errChan <- errors.New("カードの残高が足りません")
+			return
+		}
+
+		if pstr.Status != "ok" {
+			errChan <- errors.New("想定外のエラー")
+			return
+		}
+	}()
+
+	done := make(chan int64)
+	go func() {
+
+		scr := <-shipmentRespChan
+
+		_, err = tx.Exec("INSERT INTO `shippings` (`transaction_evidence_id`, `status`, `item_name`, `item_id`, `reserve_id`, `reserve_time`, `to_address`, `to_name`, `from_address`, `from_name`, `img_binary`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+			transactionEvidenceID,
+			ShippingsStatusInitial,
+			targetItem.Name,
+			targetItem.ID,
+			scr.ReserveID,
+			scr.ReserveTime,
+			buyer.Address,
+			buyer.AccountName,
+			seller.Address,
+			seller.AccountName,
+			"",
+		)
+		if err != nil {
+			errChan <- errors.New("db error")
+			return
+		}
+
+		done <- 1
+	}()
+
+Label:
+	for {
+		select {
+		case err := <-errChan:
+			tx.Rollback()
+			outputErrorMsg(w, http.StatusBadRequest, err.Error())
+			return
+		case _ = <-done:
+			tx.Commit()
+			break Label
+		}
 	}
-
-	pstr, err := APIPaymentToken(getPaymentServiceURL(), &APIPaymentServiceTokenReq{
-		ShopID: PaymentServiceIsucariShopID,
-		Token:  rb.Token,
-		APIKey: PaymentServiceIsucariAPIKey,
-		Price:  targetItem.Price,
-	})
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
-		tx.Rollback()
-		return
-	}
-
-	if pstr.Status == "invalid" {
-		outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
-		tx.Rollback()
-		return
-	}
-
-	if pstr.Status == "fail" {
-		outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
-		tx.Rollback()
-		return
-	}
-
-	if pstr.Status != "ok" {
-		outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
-		tx.Rollback()
-		return
-	}
-
-	_, err = tx.Exec("INSERT INTO `shippings` (`transaction_evidence_id`, `status`, `item_name`, `item_id`, `reserve_id`, `reserve_time`, `to_address`, `to_name`, `from_address`, `from_name`, `img_binary`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-		transactionEvidenceID,
-		ShippingsStatusInitial,
-		targetItem.Name,
-		targetItem.ID,
-		scr.ReserveID,
-		scr.ReserveTime,
-		buyer.Address,
-		buyer.AccountName,
-		seller.Address,
-		seller.AccountName,
-		"",
-	)
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
-	tx.Commit()
 
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidenceID})
@@ -1738,7 +1750,7 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 	tx := dbx.MustBegin()
 
 	item := Item{}
-	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
+	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? lock in share mode", itemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "item not found")
 		tx.Rollback()
@@ -1757,7 +1769,7 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `id` = ? FOR UPDATE", transactionEvidence.ID)
+	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `id` = ? lock in share mode", transactionEvidence.ID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
 		tx.Rollback()
@@ -1777,7 +1789,7 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 	}
 
 	shipping := Shipping{}
-	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ? FOR UPDATE", transactionEvidence.ID)
+	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ? lock in share mode", transactionEvidence.ID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "shippings not found")
 		tx.Rollback()
@@ -1869,7 +1881,7 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 	tx := dbx.MustBegin()
 
 	item := Item{}
-	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
+	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? lock in share mode", itemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "items not found")
 		tx.Rollback()
@@ -1888,7 +1900,7 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `id` = ? FOR UPDATE", transactionEvidence.ID)
+	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `id` = ? lock in share mode", transactionEvidence.ID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
 		tx.Rollback()
@@ -1908,7 +1920,7 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	shipping := Shipping{}
-	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ? FOR UPDATE", transactionEvidence.ID)
+	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ? lock in share mode", transactionEvidence.ID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "shippings not found")
 		tx.Rollback()
@@ -2014,7 +2026,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 
 	tx := dbx.MustBegin()
 	item := Item{}
-	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
+	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? lock in share mode", itemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "items not found")
 		tx.Rollback()
@@ -2033,7 +2045,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ? FOR UPDATE", itemID)
+	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ? lock in share mode", itemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
 		tx.Rollback()
@@ -2053,7 +2065,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	shipping := Shipping{}
-	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ? FOR UPDATE", transactionEvidence.ID)
+	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ? lock in share mode", transactionEvidence.ID)
 	if err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
@@ -2209,7 +2221,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 	tx := dbx.MustBegin()
 
 	seller := User{}
-	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? FOR UPDATE", user.ID)
+	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? lock in share mode", user.ID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
 		tx.Rollback()
@@ -2302,7 +2314,7 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 	tx := dbx.MustBegin()
 
 	targetItem := Item{}
-	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
+	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? lock in share mode", itemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "item not found")
 		tx.Rollback()
@@ -2322,7 +2334,7 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 	}
 
 	seller := User{}
-	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? FOR UPDATE", user.ID)
+	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? lock in share mode", user.ID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
 		tx.Rollback()
