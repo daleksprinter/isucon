@@ -1122,7 +1122,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	for _, item := range items {
 		itemids = append(itemids, strconv.FormatInt(item.ID, 10))
 	}
-	evid_query := `select t.*, s.reserve_id from transaction_evidences as t join shippings as s on t.id = s.transaction_evidence_id where t.item_id in (` + strings.Join(itemids, `,`) + `)`
+	evid_query := `select t.id, t.item_id, t.status, s.reserve_id from transaction_evidences as t join shippings as s on t.id = s.transaction_evidence_id where t.item_id in (` + strings.Join(itemids, `,`) + `)`
 
 	transEvids := []TransactionEvidence{}
 	err = tx.Select(&transEvids, evid_query)
@@ -1156,7 +1156,6 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 				concurrentError.Store(err)
 				return
 			}
-			fmt.Println("shipment id ", t.ID, "shipment status", ssr.Status)
 			shipmentstatus.Store(t.ID, ssr.Status)
 		}(evid)
 	}
@@ -2402,13 +2401,10 @@ func getSettings(w http.ResponseWriter, r *http.Request) {
 	ress.PaymentServiceURL = getPaymentServiceURL()
 
 	categories := []Category{}
-
-	err := dbx.Select(&categories, "SELECT * FROM `categories`")
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
+	for _, cat := range cats {
+		categories = append(categories, cat)
 	}
+
 	ress.Categories = categories
 
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
