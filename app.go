@@ -1,8 +1,6 @@
 package main
 
-
 import (
-	"sync"
 	"bytes"
 	"database/sql"
 	"encoding/json"
@@ -11,14 +9,16 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-	_ "net/http/pprof"
-	"net/http"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo"
@@ -89,10 +89,13 @@ type Administrator struct {
 type resvKey struct {
 	EventID, SheetID int64
 }
-var(
+
+var (
 	CurrentReservations map[resvKey]Reservation //[event_id][sheet_id]reservation
-	ResvMutex sync.Mutex
+	ResvMutex           sync.RWMutex
+	TotalPriceUser      map[int64]int64
 )
+
 func sessUserID(c echo.Context) int64 {
 	sess, _ := session.Get("session", c)
 	var userID int64
@@ -230,8 +233,6 @@ func getEvents(all bool) ([]*Event, error) {
 	return events, nil
 }
 
-
-
 func getEvent(eventID, loginUserID int64) (*Event, error) {
 	var event Event
 	if err := db.QueryRow("SELECT * FROM events WHERE id = ?", eventID).Scan(&event.ID, &event.Title, &event.PublicFg, &event.ClosedFg, &event.Price); err != nil {
@@ -261,11 +262,14 @@ func getEvent(eventID, loginUserID int64) (*Event, error) {
 
 		//var reservation Reservation
 		//err := db.QueryRow("SELECT * FROM reservations WHERE event_id = ? AND sheet_id = ? AND canceled_at IS NULL", event.ID, sheet.ID).Scan(&reservation.ID, &reservation.EventID, &reservation.SheetID, &reservation.UserID, &reservation.ReservedAt, &reservation.CanceledAt)
-		
+
+		//TODO rlock
+		ResvMutex.RLock()
 		reservation, ok := CurrentReservations[resvKey{
-			EventID : event.ID,
-			SheetID : sheet.ID,
+			EventID: event.ID,
+			SheetID: sheet.ID,
 		}]
+		ResvMutex.RUnlock()
 		if ok {
 			sheet.Mine = reservation.UserID == loginUserID
 			sheet.Reserved = true
@@ -327,7 +331,7 @@ var db *sql.DB
 
 func main() {
 
-	ResvMutex = sync.Mutex{}
+	ResvMutex = sync.RWMutex{}
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
@@ -355,7 +359,7 @@ func main() {
 	}
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte("secret"))))
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{Output: os.Stderr}))
-	e.Static("/", "public")
+	// e.Static("/", "public")
 	e.GET("/", func(c echo.Context) error {
 		events, err := getEvents(false)
 		if err != nil {
@@ -379,6 +383,27 @@ func main() {
 			return nil
 		}
 
+		//TODO calculate total user price
+		TotalPriceUser = map[int64]int64{}
+		// if err := db.QueryRow("SELECT IFNULL(SUM(e.price + s.price), 0) FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.user_id = ? AND r.canceled_at IS NULL", user.ID).Scan(&totalPrice); err != nil {
+		// 	return err
+		// }
+
+		type UsrPrice struct {
+			ID    int64 `db:"id"`
+			Price int64 `db:"price"`
+		}
+
+		usrPrices := []UsrPrice{}
+
+		if err = db.QueryRow("select r.id as id, ifnull(sum(e.price + s.price),0) as price from reservations r inner join sheets s on s.id = r.sheet_id inner join events e on e.id = r.event_id and r.canceled_at is null group by r.user_id").Scan(&usrPrices); err != nil {
+			for _, usrprice := range usrPrices {
+				TotalPriceUser[usrprice.ID] = usrprice.Price
+			}
+		}
+
+		fmt.Println(TotalPriceUser)
+
 		CurrentReservations = map[resvKey]Reservation{}
 		rows, err := db.Query("select * from reservations where canceled_at is not null")
 
@@ -390,12 +415,12 @@ func main() {
 			var resv Reservation
 			if err = rows.Scan(&resv.ID, &resv.EventID, &resv.SheetID, &resv.UserID, &resv.ReservedAt, &resv.CanceledAt); err != nil {
 				log.Println(err)
-				return  err
+				return err
 			}
 
 			CurrentReservations[resvKey{
-				EventID : resv.EventID,
-				SheetID : resv.SheetID,
+				EventID: resv.EventID,
+				SheetID: resv.SheetID,
 			}] = resv
 		}
 
@@ -493,10 +518,16 @@ func main() {
 			recentReservations = make([]Reservation, 0)
 		}
 
-		var totalPrice int
-		if err := db.QueryRow("SELECT IFNULL(SUM(e.price + s.price), 0) FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.user_id = ? AND r.canceled_at IS NULL", user.ID).Scan(&totalPrice); err != nil {
-			return err
+		var totalPrice int64
+		usrprice, ok := TotalPriceUser[user.ID]
+		if ok {
+			totalPrice = usrprice
+		} else {
+			totalPrice = 0
 		}
+		// if err := db.QueryRow("SELECT IFNULL(SUM(e.price + s.price), 0) FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.user_id = ? AND r.canceled_at IS NULL", user.ID).Scan(&totalPrice); err != nil {
+		// 	return err
+		// }
 
 		rows, err = db.Query("SELECT event_id FROM reservations WHERE user_id = ? GROUP BY event_id ORDER BY MAX(IFNULL(canceled_at, reserved_at)) DESC LIMIT 5", user.ID)
 		if err != nil {
@@ -666,15 +697,17 @@ func main() {
 
 		ResvMutex.Lock()
 		CurrentReservations[resvKey{
-			EventID : event.ID,
-			SheetID : sheet.ID,
+			EventID: event.ID,
+			SheetID: sheet.ID,
 		}] = Reservation{
-			ID : reservationID,
-			EventID : event.ID,
-			SheetID : sheet.ID,
-			UserID : user.ID,
-			ReservedAt : &tim,
+			ID:         reservationID,
+			EventID:    event.ID,
+			SheetID:    sheet.ID,
+			UserID:     user.ID,
+			ReservedAt: &tim,
 		}
+
+		TotalPriceUser[user.ID] += event.Price + sheet.Price
 		ResvMutex.Unlock()
 		return c.JSON(202, echo.Map{
 			"id":         reservationID,
@@ -744,12 +777,13 @@ func main() {
 			return err
 		}
 
-		
 		ResvMutex.Lock()
 		delete(CurrentReservations, resvKey{
-			EventID : event.ID,
-			SheetID : sheet.ID,
+			EventID: event.ID,
+			SheetID: sheet.ID,
 		})
+
+		TotalPriceUser[user.ID] -= event.Price + sheet.Price
 		ResvMutex.Unlock()
 
 		return c.NoContent(204)
