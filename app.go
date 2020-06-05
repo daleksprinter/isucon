@@ -90,10 +90,16 @@ type resvKey struct {
 	EventID, SheetID int64
 }
 
+type sheetKey struct {
+	Rank string
+	Num  int64
+}
+
 var (
 	CurrentReservations map[resvKey]Reservation //[event_id][sheet_id]reservation
 	ResvMutex           sync.RWMutex
 	TotalPriceUser      map[int64]int64
+	SheetsMemo          map[sheetKey]Sheet
 )
 
 func sessUserID(c echo.Context) int64 {
@@ -383,6 +389,23 @@ func main() {
 			return nil
 		}
 
+		SheetsMemo = make(map[sheetKey]Sheet)
+		rows, err := db.Query("select * from sheets")
+		defer rows.Close()
+
+		for rows.Next() {
+			var s Sheet
+			if err = rows.Scan(&s.ID, &s.Rank, &s.Num, &s.Price); err != nil {
+				log.Println(err)
+				return err
+			}
+
+			SheetsMemo[sheetKey{
+				Rank: s.Rank,
+				Num:  s.Num,
+			}] = s
+		}
+
 		//TODO calculate total user price
 		TotalPriceUser = map[int64]int64{}
 		// if err := db.QueryRow("SELECT IFNULL(SUM(e.price + s.price), 0) FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.user_id = ? AND r.canceled_at IS NULL", user.ID).Scan(&totalPrice); err != nil {
@@ -402,10 +425,8 @@ func main() {
 			}
 		}
 
-		fmt.Println(TotalPriceUser)
-
 		CurrentReservations = map[resvKey]Reservation{}
-		rows, err := db.Query("select * from reservations where canceled_at is not null")
+		rows, err = db.Query("select * from reservations where canceled_at is not null")
 
 		defer rows.Close()
 
@@ -742,13 +763,23 @@ func main() {
 			return resError(c, "invalid_rank", 404)
 		}
 
+		intnum, _ := strconv.Atoi(num)
+
 		var sheet Sheet
-		if err := db.QueryRow("SELECT * FROM sheets WHERE `rank` = ? AND num = ?", rank, num).Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
-			if err == sql.ErrNoRows {
-				return resError(c, "invalid_sheet", 404)
-			}
-			return err
+		sheet, ok := SheetsMemo[sheetKey{
+			Rank: rank,
+			Num:  int64(intnum),
+		}]
+
+		if !ok {
+			return resError(c, "invalid_sheet", 404)
 		}
+		// if err := db.QueryRow("SELECT * FROM sheets WHERE `rank` = ? AND num = ?", rank, num).Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
+		// 	if err == sql.ErrNoRows {
+		// 		return resError(c, "invalid_sheet", 404)
+		// 	}
+		// 	return err
+		// }
 
 		tx, err := db.Begin()
 		if err != nil {
@@ -763,6 +794,20 @@ func main() {
 			}
 			return err
 		}
+
+		// fmt.Println("event id, sheet id", event.ID, sheet.ID)
+		// ResvMutex.RLock()
+		// reservation, ok := CurrentReservations[resvKey{
+		// 	EventID: event.ID,
+		// 	SheetID: sheet.ID,
+		// }]
+		// ResvMutex.RUnlock()
+		// fmt.Println(reservation)
+		//
+		// if !ok {
+		// 	return resError(c, "not_reserved", 400)
+		// }
+		// fmt.Println(reservation.UserID, user.ID)
 		if reservation.UserID != user.ID {
 			tx.Rollback()
 			return resError(c, "not_permitted", 403)
