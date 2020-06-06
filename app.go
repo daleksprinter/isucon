@@ -226,10 +226,48 @@ func getEvents(all bool) ([]*Event, error) {
 		}
 		events = append(events, &event)
 	}
-	for i, v := range events {
-		event, err := getEvent(v.ID, -1)
+	for i, event := range events {
+
+		event.Sheets = map[string]*Sheets{
+			"S": &Sheets{},
+			"A": &Sheets{},
+			"B": &Sheets{},
+			"C": &Sheets{},
+		}
+
+		rows, err := db.Query("SELECT * FROM sheets ORDER BY `rank`, num")
 		if err != nil {
 			return nil, err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var sheet Sheet
+			if err := rows.Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
+				return nil, err
+			}
+			event.Sheets[sheet.Rank].Price = event.Price + sheet.Price
+			event.Total++
+			event.Sheets[sheet.Rank].Total++
+
+			ResvMutex.RLock()
+			reservation, ok := CurrentReservations[resvKey{
+				EventID: event.ID,
+				SheetID: sheet.ID,
+			}]
+			ResvMutex.RUnlock()
+			if ok {
+				sheet.Mine = false
+				sheet.Reserved = true
+				sheet.ReservedAtUnix = reservation.ReservedAt.Unix()
+			} else if !ok {
+				event.Remains++
+				event.Sheets[sheet.Rank].Remains++
+			} else {
+				return nil, err
+			}
+
+			event.Sheets[sheet.Rank].Detail = append(event.Sheets[sheet.Rank].Detail, &sheet)
 		}
 		for k := range event.Sheets {
 			event.Sheets[k].Detail = nil
@@ -1025,7 +1063,7 @@ func main() {
 		return renderReportCSV(c, reports)
 	}, adminLoginRequired)
 	e.GET("/admin/api/reports/sales", func(c echo.Context) error {
-		rows, err := db.Query("select r.*, s.rank as sheet_rank, s.num as sheet_num, s.price as sheet_price, e.id as event_id, e.price as event_price from reservations r inner join sheets s on s.id = r.sheet_id inner join events e on e.id = r.event_id order by reserved_at asc for update")
+		rows, err := db.Query("select r.id, r.user_id, r.reserved_at, r.canceled_at, s.rank as sheet_rank, s.num as sheet_num, s.price as sheet_price, e.id as event_id, e.price as event_price from reservations r inner join sheets s on s.id = r.sheet_id inner join events e on e.id = r.event_id order by reserved_at asc for update")
 		if err != nil {
 			return err
 		}
@@ -1036,7 +1074,7 @@ func main() {
 			var reservation Reservation
 			var sheet Sheet
 			var event Event
-			if err := rows.Scan(&reservation.ID, &reservation.EventID, &reservation.SheetID, &reservation.UserID, &reservation.ReservedAt, &reservation.CanceledAt, &sheet.Rank, &sheet.Num, &sheet.Price, &event.ID, &event.Price); err != nil {
+			if err := rows.Scan(&reservation.ID, &reservation.UserID, &reservation.ReservedAt, &reservation.CanceledAt, &sheet.Rank, &sheet.Num, &sheet.Price, &event.ID, &event.Price); err != nil {
 				return err
 			}
 			report := Report{
