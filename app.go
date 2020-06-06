@@ -226,6 +226,22 @@ func getEvents(all bool) ([]*Event, error) {
 		}
 		events = append(events, &event)
 	}
+
+	rows, err = db.Query("select * from sheets order by `rank`, num")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	sheets := []Sheet{}
+	for rows.Next() {
+		var sheet Sheet
+		if err := rows.Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
+			return nil, err
+		}
+		sheets = append(sheets, sheet)
+	}
+
 	for i, event := range events {
 
 		event.Sheets = map[string]*Sheets{
@@ -235,17 +251,17 @@ func getEvents(all bool) ([]*Event, error) {
 			"C": &Sheets{},
 		}
 
-		rows, err := db.Query("SELECT * FROM sheets ORDER BY `rank`, num")
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var sheet Sheet
-			if err := rows.Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
-				return nil, err
-			}
+		// rows, err := db.Query("SELECT * FROM sheets ORDER BY `rank`, num")
+		// if err != nil {
+		// 	return nil, err
+		// }
+		// defer rows.Close()
+		//
+		for _, sheet := range sheets {
+			// var sheet Sheet
+			// if err := rows.Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
+			// 	return nil, err
+			// }
 			event.Sheets[sheet.Rank].Price = event.Price + sheet.Price
 			event.Total++
 			event.Sheets[sheet.Rank].Total++
