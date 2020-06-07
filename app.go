@@ -342,12 +342,12 @@ func getEvent(eventID, loginUserID int64) (*Event, error) {
 		"C": &Sheets{},
 	}
 
-	rows, err := db.Query("SELECT * FROM sheets ORDER BY `rank`, num")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+	// rows, err := db.Query("SELECT * FROM sheets ORDER BY `rank`, num")
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// defer rows.Close()
+	//
 	sheets := []Sheet{}
 	for i := 1; i < 1001; i++ {
 		s := getSheet(int64(i))
@@ -1126,7 +1126,8 @@ func main() {
 	}, adminLoginRequired)
 
 	e.GET("/admin/api/reports/sales", func(c echo.Context) error {
-		rows, err := db.Query("select r.id, r.user_id, r.reserved_at, r.canceled_at, s.rank as sheet_rank, s.num as sheet_num, s.price as sheet_price, e.id as event_id, e.price as event_price from reservations r inner join sheets s on s.id = r.sheet_id inner join events e on e.id = r.event_id order by reserved_at asc for update")
+		time.Sleep(time.Second)
+		rows, err := db.Query("select r.id, r.sheet_id, r.user_id, r.reserved_at, r.canceled_at, e.id as event_id, e.price as event_price from reservations r inner join events e on e.id = r.event_id order by reserved_at asc for update")
 		if err != nil {
 			return err
 		}
@@ -1137,9 +1138,10 @@ func main() {
 			var reservation Reservation
 			var sheet Sheet
 			var event Event
-			if err := rows.Scan(&reservation.ID, &reservation.UserID, &reservation.ReservedAt, &reservation.CanceledAt, &sheet.Rank, &sheet.Num, &sheet.Price, &event.ID, &event.Price); err != nil {
+			if err := rows.Scan(&reservation.ID, &reservation.SheetID, &reservation.UserID, &reservation.ReservedAt, &reservation.CanceledAt, &event.ID, &event.Price); err != nil {
 				return err
 			}
+			sheet = getSheet(reservation.SheetID)
 			report := Report{
 				ReservationID: reservation.ID,
 				EventID:       event.ID,
