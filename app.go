@@ -259,25 +259,12 @@ func getEvents(all bool) ([]*Event, error) {
 		events = append(events, &event)
 	}
 
-	// rows, err = db.Query("select * from sheets order by `rank`, num")
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// defer rows.Close()
-
 	sheets := []Sheet{}
 
 	for i := 1; i < 1001; i++ {
 		s := getSheet(int64(i))
 		sheets = append(sheets, s)
 	}
-	// for rows.Next() {
-	// 	// var sheet Sheet
-	// 	// if err := rows.Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
-	// 	// 	return nil, err
-	// 	// }
-	// 	// sheets = append(sheets, sheet)
-	// }
 
 	for i, event := range events {
 
@@ -288,17 +275,7 @@ func getEvents(all bool) ([]*Event, error) {
 			"C": &Sheets{},
 		}
 
-		// rows, err := db.Query("SELECT * FROM sheets ORDER BY `rank`, num")
-		// if err != nil {
-		// 	return nil, err
-		// }
-		// defer rows.Close()
-		//
 		for _, sheet := range sheets {
-			// var sheet Sheet
-			// if err := rows.Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
-			// 	return nil, err
-			// }
 			event.Sheets[sheet.Rank].Price = event.Price + sheet.Price
 			event.Total++
 			event.Sheets[sheet.Rank].Total++
@@ -341,13 +318,6 @@ func getEvent(eventID, loginUserID int64) (*Event, error) {
 		"B": &Sheets{},
 		"C": &Sheets{},
 	}
-
-	// rows, err := db.Query("SELECT * FROM sheets ORDER BY `rank`, num")
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// defer rows.Close()
-	//
 	sheets := []Sheet{}
 	for i := 1; i < 1001; i++ {
 		s := getSheet(int64(i))
@@ -355,18 +325,10 @@ func getEvent(eventID, loginUserID int64) (*Event, error) {
 	}
 
 	for _, sheet := range sheets {
-		// var sheet Sheet
-		// if err := rows.Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
-		// 	return nil, err
-		// }
 		event.Sheets[sheet.Rank].Price = event.Price + sheet.Price
 		event.Total++
 		event.Sheets[sheet.Rank].Total++
 
-		//var reservation Reservation
-		//err := db.QueryRow("SELECT * FROM reservations WHERE event_id = ? AND sheet_id = ? AND canceled_at IS NULL", event.ID, sheet.ID).Scan(&reservation.ID, &reservation.EventID, &reservation.SheetID, &reservation.UserID, &reservation.ReservedAt, &reservation.CanceledAt)
-
-		//TODO rlock
 		ResvMutex.RLock()
 		reservation, ok := CurrentReservations[resvKey{
 			EventID: event.ID,
@@ -417,9 +379,15 @@ func fillinAdministrator(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 func validateRank(rank string) bool {
-	var count int
-	db.QueryRow("SELECT COUNT(*) FROM sheets WHERE `rank` = ?", rank).Scan(&count)
-	return count > 0
+	// var count int
+	// db.QueryRow("SELECT COUNT(*) FROM sheets WHERE `rank` = ?", rank).Scan(&count)
+
+	// return count > 0
+	if rank == "A" || rank == "B" || rank == "C" || rank == "S" {
+		return true
+	} else {
+		return false
+	}
 }
 
 type Renderer struct {
@@ -503,11 +471,7 @@ func main() {
 			}] = s
 		}
 
-		//TODO calculate total user price
 		TotalPriceUser = map[int64]int64{}
-		// if err := db.QueryRow("SELECT IFNULL(SUM(e.price + s.price), 0) FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.user_id = ? AND r.canceled_at IS NULL", user.ID).Scan(&totalPrice); err != nil {
-		// 	return err
-		// }
 
 		type UsrPrice struct {
 			ID    int64 `db:"id"`
@@ -599,7 +563,7 @@ func main() {
 			return resError(c, "forbidden", 403)
 		}
 
-		rows, err := db.Query("SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id WHERE r.user_id = ? ORDER BY IFNULL(r.canceled_at, r.reserved_at) DESC LIMIT 5", user.ID)
+		rows, err := db.Query("SELECT r.* FROM reservations r WHERE r.user_id = ? ORDER BY IFNULL(r.canceled_at, r.reserved_at) DESC LIMIT 5", user.ID)
 		if err != nil {
 			return err
 		}
@@ -609,9 +573,11 @@ func main() {
 		for rows.Next() {
 			var reservation Reservation
 			var sheet Sheet
-			if err := rows.Scan(&reservation.ID, &reservation.EventID, &reservation.SheetID, &reservation.UserID, &reservation.ReservedAt, &reservation.CanceledAt, &sheet.Rank, &sheet.Num); err != nil {
+			if err := rows.Scan(&reservation.ID, &reservation.EventID, &reservation.SheetID, &reservation.UserID, &reservation.ReservedAt, &reservation.CanceledAt); err != nil {
 				return err
 			}
+
+			sheet = getSheet(reservation.SheetID)
 
 			event, err := getEvent(reservation.EventID, -1)
 			if err != nil {
@@ -643,9 +609,6 @@ func main() {
 		} else {
 			totalPrice = 0
 		}
-		// if err := db.QueryRow("SELECT IFNULL(SUM(e.price + s.price), 0) FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.user_id = ? AND r.canceled_at IS NULL", user.ID).Scan(&totalPrice); err != nil {
-		// 	return err
-		// }
 
 		rows, err = db.Query("SELECT event_id FROM reservations WHERE user_id = ? GROUP BY event_id ORDER BY MAX(IFNULL(canceled_at, reserved_at)) DESC LIMIT 5", user.ID)
 		if err != nil {
@@ -871,12 +834,6 @@ func main() {
 		if !ok {
 			return resError(c, "invalid_sheet", 404)
 		}
-		// if err := db.QueryRow("SELECT * FROM sheets WHERE `rank` = ? AND num = ?", rank, num).Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
-		// 	if err == sql.ErrNoRows {
-		// 		return resError(c, "invalid_sheet", 404)
-		// 	}
-		// 	return err
-		// }
 
 		tx, err := db.Begin()
 		if err != nil {
@@ -892,19 +849,6 @@ func main() {
 			return err
 		}
 
-		// fmt.Println("event id, sheet id", event.ID, sheet.ID)
-		// ResvMutex.RLock()
-		// reservation, ok := CurrentReservations[resvKey{
-		// 	EventID: event.ID,
-		// 	SheetID: sheet.ID,
-		// }]
-		// ResvMutex.RUnlock()
-		// fmt.Println(reservation)
-		//
-		// if !ok {
-		// 	return resError(c, "not_reserved", 400)
-		// }
-		// fmt.Println(reservation.UserID, user.ID)
 		if reservation.UserID != user.ID {
 			tx.Rollback()
 			return resError(c, "not_permitted", 403)
