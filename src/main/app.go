@@ -396,7 +396,10 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	err := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` ORDER BY `created_at` DESC limit 20")
+	// err := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` ORDER BY `created_at` DESC limit 20")
+
+	err := db.Select(&results, "SELECT posts.`id`, `user_id`, `body`, `mime`, posts.`created_at` FROM `posts` INNER JOIN `users` ON posts.user_id=users.id WHERE users.del_flg = 0 ORDER BY `created_at` DESC LIMIT 20")
+
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -660,7 +663,8 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		query,
 		me.ID,
 		mime,
-		filedata,
+		// filedata,
+		[]byte(""),
 		r.FormValue("body"),
 	)
 	if eerr != nil {
@@ -673,9 +677,35 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(lerr.Error())
 		return
 	}
-
+	writeImage(int(pid), mime, filedata)
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
 	return
+}
+
+func writeImage(id int, mime string, data []byte) {
+	var ext string
+	switch mime {
+	case "image/jpeg":
+		ext = ".jpg"
+
+	case "image/png":
+		ext = ".png"
+
+	case "image/gif":
+		ext = ".gif"
+
+	default:
+		fmt.Println("failed to save image", id, mime)
+		return
+	}
+
+	fn := fmt.Sprintf("/home/isucon/private_isu/webapp/public/image/%d%s", id, ext)
+	fmt.Println(fn)
+	fierr := ioutil.WriteFile(fn, data, 0644)
+	if fierr != nil {
+		log.Fatal(fierr)
+	}
+
 }
 
 func getImage(c web.C, w http.ResponseWriter, r *http.Request) {
@@ -703,9 +733,9 @@ func getImage(c web.C, w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			fmt.Println(err.Error())
 		}
+		writeImage(pid, post.Mime, post.Imgdata)
 		return
 	}
-
 	w.WriteHeader(http.StatusNotFound)
 }
 
