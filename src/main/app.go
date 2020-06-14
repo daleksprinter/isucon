@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	crand "crypto/rand"
 	"crypto/sha512"
 	"encoding/hex"
@@ -10,15 +11,15 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"path"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-
-	_ "net/http/pprof"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	gsm "github.com/bradleypeabody/gorilla-sessions-memcache"
@@ -79,6 +80,25 @@ func init() {
 	store = gsm.NewMemcacheStore(memcacheClient, "isucogram_", []byte("sendagaya"))
 }
 
+func writeImage(id int, mime string, data []byte) {
+	fn := imagePath(id, mime)
+	err := ioutil.WriteFile(fn, data, 0666)
+	if err != nil {
+		log.Println("failed to write file; path=%q, err=%v", fn, err)
+	}
+}
+
+func copyImage(id int, src, mime string) {
+	dst := imagePath(id, mime)
+	if err := os.Chmod(src, 0666); err != nil {
+		log.Println("failed to chmod: path=%v, %v", src, err)
+	}
+
+	if err := os.Rename(src, dst); err != nil {
+		log.Println("failed to rename; src=%q, dst=%q; %v", src, dst, err)
+	}
+}
+
 func dbInitialize() {
 	sqls := []string{
 		"DELETE FROM users WHERE id > 1000",
@@ -91,6 +111,8 @@ func dbInitialize() {
 	for _, sql := range sqls {
 		db.Exec(sql)
 	}
+
+	renderIndexPosts()
 }
 
 func tryLogin(accountName, password string) *User {
@@ -118,22 +140,7 @@ func validateUser(accountName, password string) bool {
 	return true
 }
 
-// 今回のGo実装では言語側のエスケープの仕組みが使えないのでOSコマンドインジェクション対策できない
-// 取り急ぎPHPのescapeshellarg関数を参考に自前で実装
-// cf: http://jp2.php.net/manual/ja/function.escapeshellarg.php
-func escapeshellarg(arg string) string {
-	return "'" + strings.Replace(arg, "'", "'\\''", -1) + "'"
-}
-
 func digest(src string) string {
-	// opensslのバージョンによっては (stdin)= というのがつくので取る
-	// out, err := exec.Command("/bin/bash", "-c", `printf "%s" `+escapeshellarg(src)+` | openssl dgst -sha512 | sed 's/^.*= //'`).Output()
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return ""
-	// }
-	//
-	// return strings.TrimSuffix(string(out), "\n")
 	return fmt.Sprintf("%x", sha512.Sum512([]byte(src)))
 }
 
@@ -243,6 +250,19 @@ func imageURL(p Post) string {
 	}
 
 	return "/image/" + strconv.Itoa(p.ID) + ext
+}
+
+func imagePath(id int, mime string) string {
+	var ext string
+	switch mime {
+	case "image/jpeg":
+		ext = ".jpg"
+	case "image/png":
+		ext = ".png"
+	case "image/gif":
+		ext = ".gif"
+	}
+	return fmt.Sprintf("/home/isucon/private_isu/webapp/public/image/%d%s", id, ext)
 }
 
 func isLogin(u User) bool {
@@ -391,41 +411,85 @@ func getLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-func getIndex(w http.ResponseWriter, r *http.Request) {
-	me := getSessionUser(r)
+var (
+	indexTemplate *template.Template
+	postsTemplate *template.Template
 
-	results := []Post{}
+	indexPostsM         sync.Mutex
+	indexPostsT         time.Time
+	indexPostsRenderedM sync.RWMutex
+	indexPostsRendered  []byte
+)
 
-	// err := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` ORDER BY `created_at` DESC limit 20")
-
-	err := db.Select(&results, "SELECT posts.`id`, `user_id`, `body`, `mime`, posts.`created_at` FROM `posts` INNER JOIN `users` ON posts.user_id=users.id WHERE users.del_flg = 0 ORDER BY `created_at` DESC LIMIT 20")
-
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	posts, merr := makePosts(results, getCSRFToken(r), false)
-	if merr != nil {
-		fmt.Println(merr)
-		return
-	}
-
+func init() {
 	fmap := template.FuncMap{
 		"imageURL": imageURL,
 	}
 
-	template.Must(template.New("layout.html").Funcs(fmap).ParseFiles(
+	indexTemplate = template.Must(template.New("layout.html").Funcs(fmap).ParseFiles(
 		getTemplPath("layout.html"),
 		getTemplPath("index.html"),
+	))
+
+	postsTemplate = template.Must(template.New("posts.html").Funcs(fmap).ParseFiles(
 		getTemplPath("posts.html"),
 		getTemplPath("post.html"),
-	)).Execute(w, struct {
-		Posts     []Post
-		Me        User
-		CSRFToken string
-		Flash     string
-	}{posts, me, getCSRFToken(r), getFlash(w, r, "notice")})
+	))
+}
+
+func renderIndexPosts() {
+	now := time.Now()
+	indexPostsM.Lock()
+	defer indexPostsM.Unlock()
+	if indexPostsT.After(now) {
+		return
+	}
+	now = time.Now()
+
+	results := []Post{}
+	err := db.Select(&results, "SELECT posts.`id`, `user_id`, `body`, `mime`, posts.`created_at` FROM `posts` INNER JOIN `users` ON posts.user_id=users.id WHERE users.del_flg = 0 ORDER BY `created_at` DESC LIMIT 20")
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	posts, merr := makePosts(results, "[[[CSRFTOKEN]]]", false)
+	if merr != nil {
+		log.Println(merr)
+		return
+	}
+
+	var b bytes.Buffer
+	if err := postsTemplate.Execute(&b, posts); err != nil {
+		log.Println(err)
+		return
+	}
+
+	indexPostsT = now
+	indexPostsRenderedM.Lock()
+	indexPostsRendered = b.Bytes()
+	indexPostsRenderedM.Unlock()
+}
+
+func getIndexPosts(csrf string) template.HTML {
+	indexPostsRenderedM.RLock()
+	t := bytes.Replace(indexPostsRendered, []byte("[[[CSRFTOKEN]]]"), []byte(csrf), -1)
+	indexPostsRenderedM.RUnlock()
+	return template.HTML(string(t))
+}
+
+func getIndex(w http.ResponseWriter, r *http.Request) {
+	me := getSessionUser(r)
+	csrf := getCSRFToken(r)
+	posts := getIndexPosts(csrf)
+
+	indexTemplate.Execute(w,
+		map[string]interface{}{
+			"Me":        me,
+			"CSRFToken": csrf,
+			"Flash":     getFlash(w, r, "notice"),
+			"Posts":     posts},
+	)
 }
 
 func getAccountName(c web.C, w http.ResponseWriter, r *http.Request) {
@@ -602,6 +666,8 @@ func getPostsID(c web.C, w http.ResponseWriter, r *http.Request) {
 	}{p, me})
 }
 
+var uploadM sync.Mutex
+
 func postIndex(w http.ResponseWriter, r *http.Request) {
 	me := getSessionUser(r)
 	if !isLogin(me) {
@@ -609,6 +675,9 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	uploadM.Lock()
+	defer uploadM.Unlock()
+	r.ParseMultipartForm(1 << 10)
 	if r.FormValue("csrf_token") != getCSRFToken(r) {
 		w.WriteHeader(StatusUnprocessableEntity)
 		return
@@ -626,6 +695,7 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 
 	mime := ""
 	if file != nil {
+		defer file.Close()
 		// 投稿のContent-Typeからファイルのタイプを決定する
 		contentType := header.Header["Content-Type"][0]
 		if strings.Contains(contentType, "jpeg") {
@@ -644,16 +714,20 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	filedata, rerr := ioutil.ReadAll(file)
-	if rerr != nil {
-		fmt.Println(rerr.Error())
+	tf, err := ioutil.TempFile("/home/isucon/private_isu/webapp/public/upload", "img-")
+	if err != nil {
+		log.Panicf("failed to create image: %v", err)
 	}
-
-	if len(filedata) > UploadLimit {
+	written, err := io.CopyN(tf, file, UploadLimit+1)
+	if err != nil && err != io.EOF {
+		log.Panicf("failed to write to temporary file: %v", err)
+	}
+	if written > UploadLimit {
+		os.Remove(tf.Name())
+		tf.Close()
 		session := getSession(r)
 		session.Values["notice"] = "ファイルサイズが大きすぎます"
 		session.Save(r, w)
-
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
@@ -663,7 +737,6 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		query,
 		me.ID,
 		mime,
-		// filedata,
 		[]byte(""),
 		r.FormValue("body"),
 	)
@@ -677,35 +750,12 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(lerr.Error())
 		return
 	}
-	writeImage(int(pid), mime, filedata)
+	tf.Close()
+	fmt.Println("uploaded temporary file ......... ", tf.Name())
+	copyImage(int(pid), tf.Name(), mime)
+
+	renderIndexPosts()
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
-	return
-}
-
-func writeImage(id int, mime string, data []byte) {
-	var ext string
-	switch mime {
-	case "image/jpeg":
-		ext = ".jpg"
-
-	case "image/png":
-		ext = ".png"
-
-	case "image/gif":
-		ext = ".gif"
-
-	default:
-		fmt.Println("failed to save image", id, mime)
-		return
-	}
-
-	fn := fmt.Sprintf("/home/isucon/private_isu/webapp/public/image/%d%s", id, ext)
-	fmt.Println(fn)
-	fierr := ioutil.WriteFile(fn, data, 0644)
-	if fierr != nil {
-		log.Fatal(fierr)
-	}
-
 }
 
 func getImage(c web.C, w http.ResponseWriter, r *http.Request) {
@@ -736,6 +786,7 @@ func getImage(c web.C, w http.ResponseWriter, r *http.Request) {
 		writeImage(pid, post.Mime, post.Imgdata)
 		return
 	}
+
 	w.WriteHeader(http.StatusNotFound)
 }
 
@@ -760,6 +811,7 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 	query := "INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)"
 	db.Exec(query, postID, me.ID, r.FormValue("comment"))
 
+	renderIndexPosts()
 	http.Redirect(w, r, fmt.Sprintf("/posts/%d", postID), http.StatusFound)
 }
 
@@ -816,12 +868,11 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 		db.Exec(query, 1, id)
 	}
 
+	renderIndexPosts()
 	http.Redirect(w, r, "/admin/banned", http.StatusFound)
 }
 
 func main() {
-
-	go http.ListenAndServe(":3000", nil)
 	host := os.Getenv("ISUCONP_DB_HOST")
 	if host == "" {
 		host = "localhost"
@@ -845,7 +896,7 @@ func main() {
 	}
 
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local",
+		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local&interpolateParams=true",
 		user,
 		password,
 		host,
@@ -857,10 +908,20 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to DB: %s.", err.Error())
 	}
-
 	db.SetMaxOpenConns(8)
 	db.SetMaxIdleConns(8)
 	defer db.Close()
+
+	for {
+		if db.Ping() == nil {
+			break
+		}
+		log.Println("waiting db...")
+	}
+
+	renderIndexPosts()
+
+	go http.ListenAndServe(":3000", nil)
 
 	goji.Get("/initialize", getInitialize)
 	goji.Get("/login", getLogin)
@@ -877,6 +938,6 @@ func main() {
 	goji.Post("/comment", postComment)
 	goji.Get("/admin/banned", getAdminBanned)
 	goji.Post("/admin/banned", postAdminBanned)
-	goji.Get("/*", http.FileServer(http.Dir("../../../public")))
+	goji.Get("/*", http.FileServer(http.Dir("../public")))
 	goji.Serve()
 }
