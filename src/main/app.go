@@ -188,6 +188,20 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 	}
 }
 
+type CommentsUser struct {
+	ID        int       `db:"id"`
+	PostID    int       `db:"post_id"`
+	UserID    int       `db:"user_id"`
+	Comment   string    `db:"comment"`
+	CreatedAt time.Time `db:"created_at"`
+
+	AccountName   string    `db:"account_name"`
+	Passhash      string    `db:"passhash"`
+	Authority     int       `db:"authority"`
+	DelFlg        int       `db:"del_flg"`
+	UserCreatedAt time.Time `db:"user_created_at"`
+}
+
 func makePosts(results []Post, CSRFToken string, allComments bool) ([]Post, error) {
 	var posts []Post
 
@@ -197,21 +211,36 @@ func makePosts(results []Post, CSRFToken string, allComments bool) ([]Post, erro
 			return nil, err
 		}
 
-		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
+		query := "SELECT c.*, u.account_name, u.passhash, u.authority, u.del_flg, u.created_at as user_created_at FROM `comments` as c join users as u on c.user_id = u.id WHERE c.`post_id` = ? ORDER BY c.`created_at` DESC"
 		if !allComments {
 			query += " LIMIT 3"
 		}
-		var comments []Comment
-		cerr := db.Select(&comments, query, p.ID)
+		var commentsuser []CommentsUser
+		cerr := db.Select(&commentsuser, query, p.ID)
 		if cerr != nil {
 			return nil, cerr
 		}
 
-		for i := 0; i < len(comments); i++ {
-			uerr := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
-			if uerr != nil {
-				return nil, uerr
+		var comments []Comment
+		for i := 0; i < len(commentsuser); i++ {
+			cmnt := Comment{
+				ID:        commentsuser[i].ID,
+				PostID:    commentsuser[i].PostID,
+				UserID:    commentsuser[i].UserID,
+				Comment:   commentsuser[i].Comment,
+				CreatedAt: commentsuser[i].CreatedAt,
 			}
+			usr := User{
+				ID:          commentsuser[i].UserID,
+				AccountName: commentsuser[i].AccountName,
+				Passhash:    commentsuser[i].Passhash,
+				Authority:   commentsuser[i].Authority,
+				DelFlg:      commentsuser[i].DelFlg,
+				CreatedAt:   commentsuser[i].UserCreatedAt,
+			}
+
+			cmnt.User = usr
+			comments = append(comments, cmnt)
 		}
 
 		// reverse
@@ -596,7 +625,7 @@ func getPosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-	rerr := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `created_at` <= ? ORDER BY `created_at` DESC", t.Format(ISO8601_FORMAT))
+	rerr := db.Select(&results, "SELECT posts.`id`, `user_id`, `body`, `mime`, posts.`created_at` FROM `posts` INNER JOIN `users` ON posts.user_id=users.id WHERE users.del_flg = 0 AND posts.`created_at` <= ? ORDER BY `created_at` DESC LIMIT 20", t.Format(ISO8601_FORMAT))
 	if rerr != nil {
 		fmt.Println(rerr)
 		return
