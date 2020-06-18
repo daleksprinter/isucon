@@ -28,14 +28,16 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/zenazn/goji"
 	"github.com/zenazn/goji/web"
+	"github.com/zenazn/goji/web/middleware"
 )
 
 var (
 	db    *sqlx.DB
 	store *gsm.MemcacheStore
 
-	CommentCount map[int64]int
-	Mutex        sync.RWMutex
+	CommentCountByPostID map[int64]int
+	CommentCountByUserID map[int64]int
+	Mutex                sync.RWMutex
 
 	usrMemo map[int64]User
 )
@@ -84,10 +86,6 @@ func init() {
 	memcacheClient := memcache.New("localhost:11211")
 	store = gsm.NewMemcacheStore(memcacheClient, "isucogram_", []byte("sendagaya"))
 
-	CommentCount = make(map[int64]int)
-	Mutex = sync.RWMutex{}
-
-	usrMemo = make(map[int64]User)
 }
 
 func writeImage(id int, mime string, data []byte) {
@@ -221,7 +219,7 @@ func makePosts(results []Post, CSRFToken string, allComments bool) ([]Post, erro
 		// 	return nil, err
 		// }
 
-		p.CommentCount = CommentCount[int64(p.ID)]
+		p.CommentCount = CommentCountByPostID[int64(p.ID)]
 
 		query := "SELECT c.*, u.account_name, u.passhash, u.authority, u.del_flg, u.created_at as user_created_at FROM `comments` as c join users as u on c.user_id = u.id WHERE c.`post_id` = ? ORDER BY c.`created_at` DESC"
 		if !allComments {
@@ -335,6 +333,35 @@ func getTemplPath(filename string) string {
 
 func getInitialize(w http.ResponseWriter, r *http.Request) {
 	dbInitialize()
+
+	CommentCountByPostID = make(map[int64]int)
+	CommentCountByUserID = make(map[int64]int)
+	Mutex = sync.RWMutex{}
+
+	usrMemo = make(map[int64]User)
+
+	var comments []Comment
+
+	err := db.Select(&comments, "select * from comments")
+	if err != nil {
+		panic(err)
+	}
+
+	for _, val := range comments {
+		CommentCountByPostID[int64(val.PostID)]++
+		CommentCountByUserID[int64(val.UserID)]++
+	}
+
+	var usrs []User
+	db.Select(&usrs, "select * from users")
+	if err != nil {
+		panic(err)
+	}
+
+	for _, val := range usrs {
+		usrMemo[int64(val.ID)] = val
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -560,9 +587,9 @@ func getAccountName(c web.C, w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	// rerr := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC", user.ID)
+	rerr := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC limit 20", user.ID)
 
-	rerr := db.Select(&results, "SELECT posts.`id`, `user_id`, `body`, `mime`, posts.`created_at` FROM `posts` INNER JOIN `users` ON posts.user_id=users.id WHERE users.del_flg = 0 ORDER BY `created_at` DESC LIMIT 20")
+	// rerr := db.Select(&results, "SELECT posts.`id`, `user_id`, `body`, `mime`, posts.`created_at` FROM `posts` INNER JOIN `users` ON posts.user_id=users.id WHERE users.del_flg = 0 ORDER BY `created_at` DESC LIMIT 20")
 	if rerr != nil {
 		fmt.Println(rerr)
 		return
@@ -574,12 +601,12 @@ func getAccountName(c web.C, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	commentCount := 0
-	cerr := db.Get(&commentCount, "SELECT COUNT(*) AS count FROM `comments` WHERE `user_id` = ?", user.ID)
-	if cerr != nil {
-		fmt.Println(cerr)
-		return
-	}
+	commentCount := CommentCountByUserID[int64(user.ID)]
+	// cerr := db.Get(&commentCount, "SELECT COUNT(*) AS count FROM `comments` WHERE `user_id` = ?", user.ID)
+	// if cerr != nil {
+	// 	fmt.Println(cerr)
+	// 	return
+	// }
 
 	postIDs := []int{}
 	perr := db.Select(&postIDs, "SELECT `id` FROM `posts` WHERE `user_id` = ?", user.ID)
@@ -591,23 +618,26 @@ func getAccountName(c web.C, w http.ResponseWriter, r *http.Request) {
 
 	commentedCount := 0
 	if postCount > 0 {
-		s := []string{}
-		for range postIDs {
-			s = append(s, "?")
+		for _, id := range postIDs {
+			commentedCount += CommentCountByPostID[int64(id)]
 		}
-		placeholder := strings.Join(s, ", ")
-
-		// convert []int -> []interface{}
-		args := make([]interface{}, len(postIDs))
-		for i, v := range postIDs {
-			args[i] = v
-		}
-
-		ccerr := db.Get(&commentedCount, "SELECT COUNT(*) AS count FROM `comments` WHERE `post_id` IN ("+placeholder+")", args...)
-		if ccerr != nil {
-			fmt.Println(ccerr)
-			return
-		}
+		// s := []string{}
+		// for range postIDs {
+		// 	s = append(s, "?")
+		// }
+		// placeholder := strings.Join(s, ", ")
+		//
+		// // convert []int -> []interface{}
+		// args := make([]interface{}, len(postIDs))
+		// for i, v := range postIDs {
+		// 	args[i] = v
+		// }
+		//
+		// ccerr := db.Get(&commentedCount, "SELECT COUNT(*) AS count FROM `comments` WHERE `post_id` IN ("+placeholder+")", args...)
+		// if ccerr != nil {
+		// 	fmt.Println(ccerr)
+		// 	return
+		// }
 	}
 
 	me := getSessionUser(r)
@@ -805,7 +835,7 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tf.Close()
-	fmt.Println("uploaded temporary file ......... ", tf.Name())
+
 	copyImage(int(pid), tf.Name(), mime)
 
 	renderIndexPosts()
@@ -865,7 +895,8 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 	query := "INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)"
 	db.Exec(query, postID, me.ID, r.FormValue("comment"))
 
-	CommentCount[int64(postID)]++
+	CommentCountByPostID[int64(postID)]++
+	CommentCountByUserID[int64(me.ID)]++
 
 	renderIndexPosts()
 	http.Redirect(w, r, fmt.Sprintf("/posts/%d", postID), http.StatusFound)
@@ -975,36 +1006,11 @@ func main() {
 		log.Println("waiting db...")
 	}
 
-	type CommentsByID struct {
-		ID    int64 `db:"id"`
-		Count int   `db:"count"`
-	}
-
-	var commentscount []CommentsByID
-
-	err = db.Select(&commentscount, "select post_id as id, count(*) as count from comments group by post_id")
-	if err != nil {
-		panic(err)
-	}
-
-	for _, val := range commentscount {
-		CommentCount[val.ID] = val.Count
-	}
-
-	var usrs []User
-	db.Select(&usrs, "select * from users")
-	if err != nil {
-		panic(err)
-	}
-
-	for _, val := range usrs {
-		usrMemo[int64(val.ID)] = val
-	}
-	fmt.Println(usrMemo)
-
 	renderIndexPosts()
 
 	go http.ListenAndServe(":3000", nil)
+
+	goji.Abandon(middleware.Logger)
 
 	goji.Get("/initialize", getInitialize)
 	goji.Get("/login", getLogin)
