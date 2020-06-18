@@ -33,6 +33,9 @@ import (
 var (
 	db    *sqlx.DB
 	store *gsm.MemcacheStore
+
+	CommentCount map[int64]int
+	cMutex       sync.RWMutex
 )
 
 const (
@@ -78,6 +81,10 @@ type Comment struct {
 func init() {
 	memcacheClient := memcache.New("localhost:11211")
 	store = gsm.NewMemcacheStore(memcacheClient, "isucogram_", []byte("sendagaya"))
+
+	CommentCount = make(map[int64]int)
+	cMutex = sync.RWMutex{}
+
 }
 
 func writeImage(id int, mime string, data []byte) {
@@ -206,10 +213,12 @@ func makePosts(results []Post, CSRFToken string, allComments bool) ([]Post, erro
 	var posts []Post
 
 	for _, p := range results {
-		err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
-		if err != nil {
-			return nil, err
-		}
+		// err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
+		// if err != nil {
+		// 	return nil, err
+		// }
+
+		p.CommentCount = CommentCount[int64(p.ID)]
 
 		query := "SELECT c.*, u.account_name, u.passhash, u.authority, u.del_flg, u.created_at as user_created_at FROM `comments` as c join users as u on c.user_id = u.id WHERE c.`post_id` = ? ORDER BY c.`created_at` DESC"
 		if !allComments {
@@ -537,7 +546,9 @@ func getAccountName(c web.C, w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	rerr := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC", user.ID)
+	// rerr := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC", user.ID)
+
+	rerr := db.Select(&results, "SELECT posts.`id`, `user_id`, `body`, `mime`, posts.`created_at` FROM `posts` INNER JOIN `users` ON posts.user_id=users.id WHERE users.del_flg = 0 ORDER BY `created_at` DESC LIMIT 20")
 	if rerr != nil {
 		fmt.Println(rerr)
 		return
@@ -840,6 +851,8 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 	query := "INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)"
 	db.Exec(query, postID, me.ID, r.FormValue("comment"))
 
+	CommentCount[int64(postID)]++
+
 	renderIndexPosts()
 	http.Redirect(w, r, fmt.Sprintf("/posts/%d", postID), http.StatusFound)
 }
@@ -947,6 +960,24 @@ func main() {
 		}
 		log.Println("waiting db...")
 	}
+
+	type CommentsByID struct {
+		ID    int64 `db:"id"`
+		Count int   `db:"count"`
+	}
+
+	var commentscount []CommentsByID
+
+	err = db.Select(&commentscount, "select post_id as id, count(*) as count from comments group by post_id")
+	if err != nil {
+		panic(err)
+	}
+
+	for _, val := range commentscount {
+		CommentCount[val.ID] = val.Count
+	}
+
+	log.Println(CommentCount)
 
 	renderIndexPosts()
 
