@@ -35,7 +35,9 @@ var (
 	store *gsm.MemcacheStore
 
 	CommentCount map[int64]int
-	cMutex       sync.RWMutex
+	Mutex        sync.RWMutex
+
+	usrMemo map[int64]User
 )
 
 const (
@@ -83,8 +85,9 @@ func init() {
 	store = gsm.NewMemcacheStore(memcacheClient, "isucogram_", []byte("sendagaya"))
 
 	CommentCount = make(map[int64]int)
-	cMutex = sync.RWMutex{}
+	Mutex = sync.RWMutex{}
 
+	usrMemo = make(map[int64]User)
 }
 
 func writeImage(id int, mime string, data []byte) {
@@ -259,10 +262,12 @@ func makePosts(results []Post, CSRFToken string, allComments bool) ([]Post, erro
 
 		p.Comments = comments
 
-		perr := db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
-		if perr != nil {
-			return nil, perr
-		}
+		// perr := db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
+		// if perr != nil {
+		// 	return nil, perr
+		// }
+
+		p.User = usrMemo[int64(p.UserID)]
 
 		p.CSRFToken = CSRFToken
 
@@ -436,6 +441,15 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 	session.Values["user_id"] = uid
 	session.Values["csrf_token"] = secureRandomStr(16)
 	session.Save(r, w)
+
+	usr := User{}
+	query = "select * from users where id = ?"
+	err := db.Get(&usr, query, uid)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	usrMemo[int64(usr.ID)] = usr
 
 	http.Redirect(w, r, "/", http.StatusFound)
 }
@@ -977,7 +991,16 @@ func main() {
 		CommentCount[val.ID] = val.Count
 	}
 
-	log.Println(CommentCount)
+	var usrs []User
+	db.Select(&usrs, "select * from users")
+	if err != nil {
+		panic(err)
+	}
+
+	for _, val := range usrs {
+		usrMemo[int64(val.ID)] = val
+	}
+	fmt.Println(usrMemo)
 
 	renderIndexPosts()
 
