@@ -226,6 +226,9 @@ func getInitialize(c echo.Context) error {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	for _, val := range cnts {
 		msgcnt[val.ChannelID] = val.Count
