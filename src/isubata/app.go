@@ -537,8 +537,8 @@ func getHistory(c echo.Context) error {
 
 	type JsonMsg struct {
 		ID        int       `db:"id"`
-		CreatedAt time.Time `db:created_at`
-		Content   string    `db:content`
+		CreatedAt time.Time `db:"created_at"`
+		Content   string    `db:"content"`
 
 		UserID        int64     `json:"-" db:"user_id"`
 		Name          string    `json:"name" db:"name"`
