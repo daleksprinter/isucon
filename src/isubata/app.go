@@ -516,20 +516,61 @@ func getHistory(c echo.Context) error {
 		return ErrBadReqeust
 	}
 
-	messages := []Message{}
-	err = db.Select(&messages,
-		"SELECT * FROM message WHERE channel_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
-		chID, N, (page-1)*N)
-	if err != nil {
-		return err
+	// messages := []Message{}
+	// err = db.Select(&messages,
+	// 	"SELECT * FROM message WHERE channel_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+	// 	chID, N, (page-1)*N)
+	//
+	// if err != nil {
+	// 	return err
+	// }
+	//
+	// mjson := make([]map[string]interface{}, 0)
+	// for i := len(messages) - 1; i >= 0; i-- {
+	// 	r, err := jsonifyMessage(messages[i])
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	mjson = append(mjson, r)
+	// }
+	//
+
+	type JsonMsg struct {
+		ID        int       `db:"id"`
+		CreatedAt time.Time `db:created_at`
+		Content   string    `db:content`
+
+		UserID        int64     `json:"-" db:"user_id"`
+		Name          string    `json:"name" db:"name"`
+		Salt          string    `json:"-" db:"salt"`
+		Password      string    `json:"-" db:"password"`
+		DisplayName   string    `json:"display_name" db:"display_name"`
+		AvatarIcon    string    `json:"avatar_icon" db:"avatar_icon"`
+		UserCreatedAt time.Time `json:"-" db:"user_created_at"`
 	}
 
+	jsnmsgs := []JsonMsg{}
+	err = db.Select(&jsnmsgs,
+		"SELECT m.id, m.content, m.created_at, u.id as user_id, u.name, u.salt, u.password, u.display_name, u.avatar_icon, u.created_at as user_created_at FROM message as m join user as u on m.user_id = u.id WHERE m.channel_id =j ? ORDER BY m.id DESC LIMIT ? OFFSET ?",
+		chID, N, (page-1)*N)
+
 	mjson := make([]map[string]interface{}, 0)
-	for i := len(messages) - 1; i >= 0; i-- {
-		r, err := jsonifyMessage(messages[i])
-		if err != nil {
-			return err
+	for i := len(jsnmsgs) - 1; i >= 0; i-- {
+		usr := User{
+			ID:          jsnmsgs[i].UserID,
+			Name:        jsnmsgs[i].Name,
+			Salt:        jsnmsgs[i].Salt,
+			Password:    jsnmsgs[i].Password,
+			DisplayName: jsnmsgs[i].DisplayName,
+			AvatarIcon:  jsnmsgs[i].AvatarIcon,
+			CreatedAt:   jsnmsgs[i].UserCreatedAt,
 		}
+
+		r := make(map[string]interface{})
+		r["id"] = jsnmsgs[i].ID
+		r["user"] = usr
+		r["date"] = jsnmsgs[i].CreatedAt.Format("2006/01/02 15:04:05")
+		r["content"] = jsnmsgs[i].Content
 		mjson = append(mjson, r)
 	}
 
