@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -33,6 +34,8 @@ const (
 var (
 	db            *sqlx.DB
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
+	msgcnt        map[int64]int
+	mtx           sync.Mutex
 )
 
 type Renderer struct {
@@ -81,6 +84,7 @@ func init() {
 
 	db.SetMaxOpenConns(20)
 	db.SetConnMaxLifetime(5 * time.Minute)
+
 	log.Printf("Succeeded to connect db.")
 }
 
@@ -209,6 +213,26 @@ func getInitialize(c echo.Context) error {
 	db.MustExec("DELETE FROM channel WHERE id > 10")
 	db.MustExec("DELETE FROM message WHERE id > 10000")
 	db.MustExec("DELETE FROM haveread")
+
+	//initialize message counter
+	msgcnt = make(map[int64]int)
+	type Counter struct {
+		ChannelID int64 `db:"channel_id"`
+		Count     int   `db:"cnt"`
+	}
+	query := "select channel_id, count(*) as cnt from messages group by channel_id"
+	cnts := []Counter{}
+	err := db.Select(&cnts, query)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, val := range cnts {
+		msgcnt[val.ChannelID] = val.Count
+	}
+
+	fmt.Println(msgcnt)
+
 	return c.String(204, "")
 }
 
