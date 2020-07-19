@@ -683,7 +683,7 @@ func postProfile(c echo.Context) error {
 }
 
 func WriteIcon(filename string, data []byte) {
-	file, err := os.Create("/home/isucon/isubata/webapp/public/icons" + filename)
+	file, err := os.Create("/home/isucon/isubata/webapp/public/icons/" + filename)
 	if err != nil {
 		log.Fatal(err)
 	}
