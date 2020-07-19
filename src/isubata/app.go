@@ -682,6 +682,15 @@ func postProfile(c echo.Context) error {
 	return c.Redirect(http.StatusSeeOther, "/")
 }
 
+func WriteIcon(filename string, data []byte) {
+	file, err := os.Create("/home/isucon/isubata/webapp/public/icons" + filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	file.Write(data)
+}
+
 func getIcon(c echo.Context) error {
 	var name string
 	var data []byte
@@ -705,6 +714,8 @@ func getIcon(c echo.Context) error {
 	default:
 		return echo.ErrNotFound
 	}
+
+	WriteIcon(name, data)
 	return c.Blob(http.StatusOK, mime, data)
 }
 
