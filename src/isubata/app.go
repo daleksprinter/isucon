@@ -551,7 +551,7 @@ func getHistory(c echo.Context) error {
 
 	jsnmsgs := []JsonMsg{}
 	err = db.Select(&jsnmsgs,
-		"SELECT m.id, m.content, m.created_at, u.id as user_id, u.name, u.salt, u.password, u.display_name, u.avatar_icon, u.created_at as user_created_at FROM message as m join user as u on m.user_id = u.id WHERE m.channel_id =j ? ORDER BY m.id DESC LIMIT ? OFFSET ?",
+		"SELECT m.id, m.content, m.created_at, u.id as user_id, u.name, u.salt, u.password, u.display_name, u.avatar_icon, u.created_at as user_created_at FROM message as m join user as u on m.user_id = u.id WHERE m.channel_id = ? ORDER BY m.id DESC LIMIT ? OFFSET ?",
 		chID, N, (page-1)*N)
 
 	mjson := make([]map[string]interface{}, 0)
