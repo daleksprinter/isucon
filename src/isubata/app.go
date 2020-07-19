@@ -234,8 +234,6 @@ func getInitialize(c echo.Context) error {
 		msgcnt[val.ChannelID] = val.Count
 	}
 
-	fmt.Println(msgcnt)
-
 	return c.String(204, "")
 }
 
@@ -375,6 +373,10 @@ func postMessage(c echo.Context) error {
 		return err
 	}
 
+	mtx.Lock()
+	msgcnt[chanID]++
+	mtx.Unlock()
+
 	return c.NoContent(204)
 }
 
@@ -485,15 +487,19 @@ func fetchUnread(c echo.Context) error {
 			return err
 		}
 
-		var cnt int64
+		var cnt int
 		if lastID > 0 {
 			err = db.Get(&cnt,
 				"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ? AND ? < id",
 				chID, lastID)
 		} else {
-			err = db.Get(&cnt,
-				"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
-				chID)
+			// err = db.Get(&cnt,
+			// 	"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
+			// 	chID)
+
+			mtx.Lock()
+			cnt = msgcnt[chID]
+			mtx.Unlock()
 		}
 		if err != nil {
 			return err
@@ -530,8 +536,13 @@ func getHistory(c echo.Context) error {
 	}
 
 	const N = 20
-	var cnt int64
-	err = db.Get(&cnt, "SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?", chID)
+	var cnt int
+	// err = db.Get(&cnt, "SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?", chID)
+
+	mtx.Lock()
+	cnt = msgcnt[chID]
+	mtx.Unlock()
+
 	if err != nil {
 		return err
 	}
