@@ -220,7 +220,7 @@ func getInitialize(c echo.Context) error {
 		ChannelID int64 `db:"channel_id"`
 		Count     int   `db:"cnt"`
 	}
-	query := "select channel_id, count(*) as cnt from messages group by channel_id"
+	query := "select channel_id, count(*) as cnt from message group by channel_id"
 	cnts := []Counter{}
 	err := db.Select(&cnts, query)
 	if err != nil {
