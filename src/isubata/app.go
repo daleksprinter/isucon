@@ -444,12 +444,11 @@ func getMessage(c echo.Context) error {
 
 	jsnmsg := []JsonMsg{}
 
-	err = db.Select(&jsnmsg, query, chanID, lastID)
+	err = db.Select(&jsnmsg, query, lastID, chanID)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println(jsnmsg)
 	response := make([]map[string]interface{}, 0)
 	for i := len(jsnmsg) - 1; i >= 0; i-- {
 		u := User{
@@ -465,7 +464,7 @@ func getMessage(c echo.Context) error {
 		r["content"] = jsnmsg[i].Content
 		response = append(response, r)
 	}
-	fmt.Println(len(jsnmsg))
+
 	if len(jsnmsg) > 0 {
 		_, err := db.Exec("INSERT INTO haveread (user_id, channel_id, message_id, updated_at, created_at)"+
 			" VALUES (?, ?, ?, NOW(), NOW())"+
