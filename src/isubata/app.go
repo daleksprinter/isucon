@@ -767,6 +767,11 @@ func postAddChannel(c echo.Context) error {
 		fmt.Sprintf("/channel/%v", lastID))
 }
 
+func Exists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
+}
+
 func postProfile(c echo.Context) error {
 	self, err := ensureLogin(c)
 	if self == nil {
@@ -807,11 +812,13 @@ func postProfile(c echo.Context) error {
 		avatarName = fmt.Sprintf("%x%s", sha1.Sum(avatarData), ext)
 	}
 
-	if avatarName != "" && len(avatarData) > 0 {
-		_, err := db.Exec("INSERT INTO image (name, data) VALUES (?, ?)", avatarName, avatarData)
-		if err != nil {
-			return err
-		}
+	if avatarName != "" && len(avatarData) > 0 && !Exists("/home/isucon/isubata/webapp/public/icons/"+avatarName) {
+		// _, err := db.Exec("INSERT INTO image (name, data) VALUES (?, ?)", avatarName, avatarData)
+		// if err != nil {
+		// 	return err
+		// }
+
+		WriteIcon(avatarName, avatarData)
 		_, err = db.Exec("UPDATE user SET avatar_icon = ? WHERE id = ?", avatarName, self.ID)
 		if err != nil {
 			return err
