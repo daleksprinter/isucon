@@ -464,7 +464,7 @@ func getMessage(c echo.Context) error {
 		r["content"] = jsnmsg[i].Content
 		response = append(response, r)
 	}
-
+	fmt.Println(len(jsnmsg))
 	if len(jsnmsg) > 0 {
 		_, err := db.Exec("INSERT INTO haveread (user_id, channel_id, message_id, updated_at, created_at)"+
 			" VALUES (?, ?, ?, NOW(), NOW())"+
