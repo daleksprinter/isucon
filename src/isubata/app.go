@@ -411,26 +411,65 @@ func getMessage(c echo.Context) error {
 		return err
 	}
 
-	messages, err := queryMessages(chanID, lastID)
+	// messages, err := queryMessages(chanID, lastID)
+	// if err != nil {
+	// 	return err
+	// }
+	//
+	// response := make([]map[string]interface{}, 0)
+	// for i := len(messages) - 1; i >= 0; i-- {
+	// 	m := messages[i]
+	// 	r, err := jsonifyMessage(m)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	response = append(response, r)
+	// }
+
+	// "SELECT * FROM message WHERE id > ? AND channel_id = ? ORDER BY id DESC LIMIT 100"
+
+	query := "SELECT m.*, u.name,  u.display_name, u.avatar_icon FROM message as m join user as u on m.user_id = u.id WHERE m.id > ? AND m.channel_id = ? ORDER BY m.id DESC LIMIT 100"
+
+	type JsonMsg struct {
+		ID        int64     `db:"id"`
+		ChannelID int64     `db:"channel_id"`
+		UserID    int64     `db:"user_id"`
+		Content   string    `db:"content"`
+		CreatedAt time.Time `db:"created_at"`
+
+		Name        string `json:"name" db:"name"`
+		DisplayName string `json:"display_name" db:"display_name"`
+		AvatarIcon  string `json:"avatar_icon" db:"avatar_icon"`
+	}
+
+	jsnmsg := []JsonMsg{}
+
+	err = db.Select(&jsnmsg, query, chanID, lastID)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 
 	response := make([]map[string]interface{}, 0)
-	for i := len(messages) - 1; i >= 0; i-- {
-		m := messages[i]
-		r, err := jsonifyMessage(m)
-		if err != nil {
-			return err
+	for i := len(jsnmsg) - 1; i >= 0; i-- {
+		u := User{
+			Name:        jsnmsg[i].Name,
+			DisplayName: jsnmsg[i].DisplayName,
+			AvatarIcon:  jsnmsg[i].AvatarIcon,
 		}
+
+		r := make(map[string]interface{})
+		r["id"] = jsnmsg[i].ID
+		r["user"] = u
+		r["date"] = jsnmsg[i].CreatedAt.Format("2006/01/02 15:04:05")
+		r["content"] = jsnmsg[i].Content
 		response = append(response, r)
 	}
 
-	if len(messages) > 0 {
+	if len(jsnmsg) > 0 {
 		_, err := db.Exec("INSERT INTO haveread (user_id, channel_id, message_id, updated_at, created_at)"+
 			" VALUES (?, ?, ?, NOW(), NOW())"+
 			" ON DUPLICATE KEY UPDATE message_id = ?, updated_at = NOW()",
-			userID, chanID, messages[0].ID, messages[0].ID)
+			userID, chanID, jsnmsg[0].ID, jsnmsg[0].ID)
 		if err != nil {
 			return err
 		}
