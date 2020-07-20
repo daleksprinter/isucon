@@ -449,6 +449,7 @@ func getMessage(c echo.Context) error {
 		log.Fatal(err)
 	}
 
+	fmt.Println(jsnmsg)
 	response := make([]map[string]interface{}, 0)
 	for i := len(jsnmsg) - 1; i >= 0; i-- {
 		u := User{
