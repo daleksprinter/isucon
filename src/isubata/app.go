@@ -31,10 +31,16 @@ const (
 	avatarMaxBytes = 1 * 1024 * 1024
 )
 
+type HavereadKey struct {
+	UserID    int64
+	ChannelID int64
+}
+
 var (
 	db            *sqlx.DB
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
 	msgcnt        map[int64]int
+	haveread      map[HavereadKey]int64
 	mtx           sync.Mutex
 )
 
@@ -233,6 +239,8 @@ func getInitialize(c echo.Context) error {
 	for _, val := range cnts {
 		msgcnt[val.ChannelID] = val.Count
 	}
+
+	haveread = make(map[HavereadKey]int64)
 
 	return c.String(204, "")
 }
@@ -464,13 +472,23 @@ func getMessage(c echo.Context) error {
 	}
 
 	if len(jsnmsg) > 0 {
-		_, err := db.Exec("INSERT INTO haveread (user_id, channel_id, message_id, updated_at, created_at)"+
-			" VALUES (?, ?, ?, NOW(), NOW())"+
-			" ON DUPLICATE KEY UPDATE message_id = ?, updated_at = NOW()",
-			userID, chanID, jsnmsg[0].ID, jsnmsg[0].ID)
-		if err != nil {
-			return err
-		}
+
+		// --- UPDATE HaveRead --- //
+
+		// _, err := db.Exec("INSERT INTO haveread (user_id, channel_id, message_id, updated_at, created_at)"+
+		// 	" VALUES (?, ?, ?, NOW(), NOW())"+
+		// 	" ON DUPLICATE KEY UPDATE message_id = ?, updated_at = NOW()",
+		// 	userID, chanID, jsnmsg[0].ID, jsnmsg[0].ID)
+		// if err != nil {
+		// 	return err
+		// }
+
+		mtx.Lock()
+		haveread[HavereadKey{
+			UserID:    userID,
+			ChannelID: chanID,
+		}] = jsnmsg[0].ID
+		mtx.Unlock()
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -483,24 +501,33 @@ func queryChannels() ([]int64, error) {
 }
 
 func queryHaveRead(userID, chID int64) (int64, error) {
-	type HaveRead struct {
-		UserID    int64     `db:"user_id"`
-		ChannelID int64     `db:"channel_id"`
-		MessageID int64     `db:"message_id"`
-		UpdatedAt time.Time `db:"updated_at"`
-		CreatedAt time.Time `db:"created_at"`
-	}
-	h := HaveRead{}
+	// type HaveRead struct {
+	// 	UserID    int64     `db:"user_id"`
+	// 	ChannelID int64     `db:"channel_id"`
+	// 	MessageID int64     `db:"message_id"`
+	// 	UpdatedAt time.Time `db:"updated_at"`
+	// 	CreatedAt time.Time `db:"created_at"`
+	// }
+	// h := HaveRead{}
+	//
+	// err := db.Get(&h, "SELECT * FROM haveread WHERE user_id = ? AND channel_id = ?",
+	// 	userID, chID)
+	//
+	// if err == sql.ErrNoRows {
+	// 	return 0, nil
+	// } else if err != nil {
+	// 	return 0, err
+	// }
+	// return h.MessageID, nil
 
-	err := db.Get(&h, "SELECT * FROM haveread WHERE user_id = ? AND channel_id = ?",
-		userID, chID)
+	mtx.Lock()
+	lastreadid := haveread[HavereadKey{
+		UserID:    userID,
+		ChannelID: chID,
+	}]
+	mtx.Unlock()
 
-	if err == sql.ErrNoRows {
-		return 0, nil
-	} else if err != nil {
-		return 0, err
-	}
-	return h.MessageID, nil
+	return lastreadid, nil
 }
 
 func fetchUnread(c echo.Context) error {
