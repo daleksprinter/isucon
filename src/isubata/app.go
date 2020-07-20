@@ -773,6 +773,7 @@ func Exists(filename string) bool {
 }
 
 func postProfile(c echo.Context) error {
+	time.Sleep(time.Second)
 	self, err := ensureLogin(c)
 	if self == nil {
 		return err
