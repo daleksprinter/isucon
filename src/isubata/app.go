@@ -428,7 +428,7 @@ func getMessage(c echo.Context) error {
 
 	// "SELECT * FROM message WHERE id > ? AND channel_id = ? ORDER BY id DESC LIMIT 100"
 
-	query := "SELECT m.id, m.date, m.content, u.name,  u.display_name, u.avatar_icon FROM message as m join user as u on m.user_id = u.id WHERE m.id > ? AND m.channel_id = ? ORDER BY m.id DESC LIMIT 100"
+	query := "SELECT m.id, m.created_at, m.content, u.name,  u.display_name, u.avatar_icon FROM message as m join user as u on m.user_id = u.id WHERE m.id > ? AND m.channel_id = ? ORDER BY m.id DESC LIMIT 100"
 
 	type JsonMsg struct {
 		ID        int64     `db:"id"`
