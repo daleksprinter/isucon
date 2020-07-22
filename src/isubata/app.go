@@ -606,7 +606,6 @@ func getHistory(c echo.Context) error {
 	mtx.Lock()
 	cnt = msgcnt[chID]
 	mtx.Unlock()
-
 	if err != nil {
 		return err
 	}
