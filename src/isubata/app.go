@@ -714,6 +714,7 @@ func getProfile(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	fmt.Println(er)
 
 	return c.Render(http.StatusOK, "profile", map[string]interface{}{
 		"ChannelID":   0,
