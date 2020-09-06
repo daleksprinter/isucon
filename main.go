@@ -509,6 +509,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	for i, val := range CategoryList {
 		CategoryMap[i] = val
 	}
+	log.Println(CategoryMap)
 
 	ri := reqInitialize{}
 
