@@ -407,6 +407,53 @@ func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err
 	return userSimple, err
 }
 
+var CategoryList = []Category{
+	Category{ID: 1, ParentID: 0, CategoryName: "ソファー"},
+	Category{ID: 2, ParentID: 1, CategoryName: "一人掛けソファー"},
+	Category{ID: 3, ParentID: 1, CategoryName: "二人掛けソファー"},
+	Category{ID: 4, ParentID: 1, CategoryName: "コーナーソファー"},
+	Category{ID: 5, ParentID: 1, CategoryName: "二段ソファー"},
+	Category{ID: 6, ParentID: 1, CategoryName: "ソファーベッド"},
+	Category{ID: 10, ParentID: 0, CategoryName: "家庭用チェア"},
+	Category{ID: 11, ParentID: 10, CategoryName: "スツール"},
+	Category{ID: 12, ParentID: 10, CategoryName: "クッションスツール"},
+	Category{ID: 13, ParentID: 10, CategoryName: "ダイニングチェア"},
+	Category{ID: 14, ParentID: 10, CategoryName: "リビングチェア"},
+	Category{ID: 15, ParentID: 10, CategoryName: "カウンターチェア"},
+	Category{ID: 20, ParentID: 0, CategoryName: "キッズチェア"},
+	Category{ID: 21, ParentID: 20, CategoryName: "学習チェア"},
+	Category{ID: 22, ParentID: 20, CategoryName: "ベビーソファ"},
+	Category{ID: 23, ParentID: 20, CategoryName: "キッズハイチェア"},
+	Category{ID: 24, ParentID: 20, CategoryName: "テーブルチェア"},
+	Category{ID: 30, ParentID: 0, CategoryName: "オフィスチェア"},
+	Category{ID: 31, ParentID: 30, CategoryName: "デスクチェア"},
+	Category{ID: 32, ParentID: 30, CategoryName: "ビジネスチェア"},
+	Category{ID: 33, ParentID: 30, CategoryName: "回転チェア"},
+	Category{ID: 34, ParentID: 30, CategoryName: "リクライニングチェア"},
+	Category{ID: 35, ParentID: 30, CategoryName: "投擲用椅子"},
+	Category{ID: 40, ParentID: 0, CategoryName: "折りたたみ椅子"},
+	Category{ID: 41, ParentID: 40, CategoryName: "パイプ椅子"},
+	Category{ID: 42, ParentID: 40, CategoryName: "木製折りたたみ椅子"},
+	Category{ID: 43, ParentID: 40, CategoryName: "キッチンチェア"},
+	Category{ID: 44, ParentID: 40, CategoryName: "アウトドアチェア"},
+	Category{ID: 45, ParentID: 40, CategoryName: "作業椅子"},
+	Category{ID: 50, ParentID: 0, CategoryName: "ベンチ"},
+	Category{ID: 51, ParentID: 50, CategoryName: "一人掛けベンチ"},
+	Category{ID: 52, ParentID: 50, CategoryName: "二人掛けベンチ"},
+	Category{ID: 53, ParentID: 50, CategoryName: "アウトドア用ベンチ"},
+	Category{ID: 54, ParentID: 50, CategoryName: "収納付きベンチ"},
+	Category{ID: 55, ParentID: 50, CategoryName: "背もたれ付きベンチ"},
+	Category{ID: 56, ParentID: 50, CategoryName: "ベンチマーク"},
+	Category{ID: 60, ParentID: 0, CategoryName: "座椅子"},
+	Category{ID: 61, ParentID: 60, CategoryName: "和風座椅子"},
+	Category{ID: 62, ParentID: 60, CategoryName: "高座椅子"},
+	Category{ID: 63, ParentID: 60, CategoryName: "ゲーミング座椅子"},
+	Category{ID: 64, ParentID: 60, CategoryName: "ロッキングチェア"},
+	Category{ID: 65, ParentID: 60, CategoryName: "座布団"},
+	Category{ID: 66, ParentID: 60, CategoryName: "空気椅子"},
+}
+var CategoryMap = map[int]Category{}
+
 func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
 	err = sqlx.Get(q, &category, "SELECT * FROM `categories` WHERE `id` = ?", categoryID)
 	if category.ParentID != 0 {
@@ -417,6 +464,12 @@ func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err err
 		category.ParentCategoryName = parentCategory.CategoryName
 	}
 	return category, err
+}
+
+func getCategory(categoryID int) (category Category, err error) {
+	category = CategoryMap[categoryID]
+	category.ParentCategoryName = CategoryMap[category.ParentID].CategoryName
+	return category, nil
 }
 
 func getConfigByName(name string) (string, error) {
@@ -453,6 +506,10 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
+	for i, val := range CategoryList {
+		CategoryMap[i] = val
+	}
+
 	ri := reqInitialize{}
 
 	err := json.NewDecoder(r.Body).Decode(&ri)
@@ -564,7 +621,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 			outputErrorMsg(w, http.StatusNotFound, "seller not found")
 			return
 		}
-		category, err := getCategoryByID(dbx, item.CategoryID)
+		category, err := getCategory(item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
@@ -606,7 +663,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rootCategory, err := getCategoryByID(dbx, rootCategoryID)
+	rootCategory, err := getCategory(rootCategoryID)
 	if err != nil || rootCategory.ParentID != 0 {
 		outputErrorMsg(w, http.StatusNotFound, "category not found")
 		return
@@ -692,7 +749,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 			outputErrorMsg(w, http.StatusNotFound, "seller not found")
 			return
 		}
-		category, err := getCategoryByID(dbx, item.CategoryID)
+		category, err := getCategory(item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
@@ -802,7 +859,7 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 
 	itemSimples := []ItemSimple{}
 	for _, item := range items {
-		category, err := getCategoryByID(dbx, item.CategoryID)
+		category, err := getCategory(item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
@@ -920,7 +977,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			tx.Rollback()
 			return
 		}
-		category, err := getCategoryByID(tx, item.CategoryID)
+		category, err := getCategory(item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			tx.Rollback()
@@ -1042,7 +1099,7 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	category, err := getCategoryByID(dbx, item.CategoryID)
+	category, err := getCategory(item.CategoryID)
 	if err != nil {
 		outputErrorMsg(w, http.StatusNotFound, "category not found")
 		return
@@ -1330,7 +1387,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	category, err := getCategoryByID(tx, targetItem.CategoryID)
+	category, err := getCategory(targetItem.CategoryID)
 	if err != nil {
 		log.Print(err)
 
@@ -1928,7 +1985,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	category, err := getCategoryByID(dbx, categoryID)
+	category, err := getCategory(categoryID)
 	if err != nil || category.ParentID == 0 {
 		log.Print(categoryID, category)
 		outputErrorMsg(w, http.StatusBadRequest, "Incorrect category ID")
