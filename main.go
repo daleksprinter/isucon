@@ -507,7 +507,7 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
 	for i, val := range CategoryList {
-		CategoryMap[i] = val
+		CategoryMap[i+1] = val
 	}
 	log.Println(CategoryMap)
 
