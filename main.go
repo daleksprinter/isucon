@@ -854,7 +854,7 @@ func searchRecommendedEstateWithChair(c echo.Context) error {
 	// err = db.Select(&estates, query, w, h, w, d, h, w, h, d, d, w, d, h, Limit)
 
 	query = `SELECT * FROM estate WHERE (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) ORDER BY popularity DESC, id ASC LIMIT ?`
-	err = db.Select(&estates, query, mx1, mx2, mx1, mx2, Limit)
+	err = db.Select(&estates, query, mx1, mx2, mx2, mx1, Limit)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
