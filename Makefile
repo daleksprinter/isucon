@@ -12,3 +12,5 @@ slackcat:
 restartapp:
 	sudo systemctl restart isuumo.go
 
+mysqldump:
+	sudo mysqldumpslow -s t /var/log/mysql/mysql-slow.sql > mysql-log-profile
