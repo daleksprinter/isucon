@@ -18,7 +18,7 @@ CREATE TABLE isuumo.estate
     door_width  INTEGER             NOT NULL,
     features    VARCHAR(64)         NOT NULL,
     popularity  INTEGER             NOT NULL,
-    popularity_desc INTEGER AS (-popularity) NOT NULL,
+    -- popularity_desc INTEGER AS (-popularity) NOT NULL,
     INDEX rentind(rent)
 );
 
