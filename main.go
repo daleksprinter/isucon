@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -814,6 +815,15 @@ func getLowPricedEstate(c echo.Context) error {
 	return c.JSON(http.StatusOK, EstateListResponse{Estates: estates})
 }
 
+func getMax(a, b, c int64) (mx1, mx2 int64) {
+	arr := []int64{a, b, c}
+	sort.Slice(arr, func(i, j int) bool {
+		return arr[i] < arr[j]
+	})
+
+	return arr[2], arr[1]
+}
+
 func searchRecommendedEstateWithChair(c echo.Context) error {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -837,8 +847,15 @@ func searchRecommendedEstateWithChair(c echo.Context) error {
 	w := chair.Width
 	h := chair.Height
 	d := chair.Depth
-	query = `SELECT * FROM estate WHERE (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) ORDER BY popularity DESC, id ASC LIMIT ?`
-	err = db.Select(&estates, query, w, h, w, d, h, w, h, d, d, w, d, h, Limit)
+
+	mx1, mx2 := getMax(w, h, d)
+
+	// query = `SELECT * FROM estate WHERE (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) ORDER BY popularity DESC, id ASC LIMIT ?`
+	// err = db.Select(&estates, query, w, h, w, d, h, w, h, d, d, w, d, h, Limit)
+
+	query = `SELECT * FROM estate WHERE (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) ORDER BY popularity DESC, id ASC LIMIT ?`
+	err = db.Select(&estates, query, mx1, mx2, mx1, mx2, Limit)
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.JSON(http.StatusOK, EstateListResponse{[]Estate{}})
