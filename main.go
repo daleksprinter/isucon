@@ -821,7 +821,7 @@ func getMax(a, b, c int64) (mx1, mx2 int64) {
 		return arr[i] < arr[j]
 	})
 
-	return arr[2], arr[0]
+	return arr[1], arr[0]
 }
 
 func searchRecommendedEstateWithChair(c echo.Context) error {
