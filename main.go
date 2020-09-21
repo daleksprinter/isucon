@@ -850,7 +850,6 @@ func searchRecommendedEstateWithChair(c echo.Context) error {
 	d := chair.Depth
 
 	mx1, mx2 := getMax(w, h, d)
-	fmt.Println("lenght of chair ", mx1, mx2, "chair size", w, h, d)
 
 	// query = `SELECT * FROM estate WHERE (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) ORDER BY popularity_desc ASC, id ASC LIMIT ?`
 	// err = db.Select(&estates, query, w, h, w, d, h, w, h, d, d, w, d, h, Limit)
@@ -880,6 +879,7 @@ func searchEstateNazotte(c echo.Context) error {
 	}
 	estatesInBoundingBox := []Estate{}
 	query := fmt.Sprintf(`SELECT * FROM estate WHERE ST_Contains(ST_PolygonFromText(%s), ST_GeomFromText(CONCAT('POINT(', latitude, ' ', longitude, ')'))) ORDER BY popularity_desc ASC, id ASC LIMIT ?`, coordinates.coordinatesToText())
+	fmt.Println(query)
 	err = db.Select(&estatesInBoundingBox, query, NazotteLimit)
 	if err == sql.ErrNoRows {
 		c.Echo().Logger.Infof("select * from estate where latitude ...", err)
