@@ -317,6 +317,7 @@ func initialize(c echo.Context) error {
 			mySQLConnectionChairData.DBName,
 			sqlFile,
 		)
+		fmt.Println("initializing command string is", cmdStr)
 		if err := exec.Command("bash", "-c", cmdStr).Run(); err != nil {
 			fmt.Println(err)
 			c.Logger().Errorf("Initialize script error : %v", err)
@@ -339,6 +340,7 @@ func initialize(c echo.Context) error {
 			mySQLConnectionEstateData.DBName,
 			sqlFile,
 		)
+		fmt.Println("initializing command string is", cmdStr)
 		if err := exec.Command("bash", "-c", cmdStr).Run(); err != nil {
 			fmt.Println(err)
 			c.Logger().Errorf("Initialize script error : %v", err)
