@@ -14,3 +14,6 @@ restartapp:
 
 mysqldump:
 	sudo mysqldumpslow -s t /var/log/mysql/mysql-slow.sql > mysql-log-profile
+
+initdb:
+	/home/isucon/isuumo/webapp/mysql/db/init.sh
