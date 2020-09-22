@@ -650,7 +650,7 @@ func getEstateDetail(c echo.Context) error {
 	}
 
 	var estate Estate
-	err = chairDB.Get(&estate, "SELECT * FROM estate WHERE id = ?", id)
+	err = estateDB.Get(&estate, "SELECT * FROM estate WHERE id = ?", id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			c.Echo().Logger.Infof("getEstateDetail estate id %v not found", id)
