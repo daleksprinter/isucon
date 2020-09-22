@@ -344,7 +344,7 @@ func initialize(c echo.Context) error {
 func getChairDetail(c echo.Context) error {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.Echo().Loggaier.Errorf("Request parameter \"id\" parse error : %v", err)
+		c.Echo().Logger.Errorf("Request parameter \"id\" parse error : %v", err)
 		return c.NoContent(http.StatusBadRequest)
 	}
 
