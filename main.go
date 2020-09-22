@@ -8,6 +8,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -298,55 +300,54 @@ func main() {
 }
 
 func initialize(c echo.Context) error {
-	fmt.Println("initialize initialize initialize")
-	// sqlDir := filepath.Join("..", "mysql", "db")
-	// paths := []string{
-	// 	filepath.Join(sqlDir, "0_Schema.sql"),
-	// 	filepath.Join(sqlDir, "2_DummyChairData.sql"),
-	// }
-	//
-	// for _, p := range paths {
-	// 	sqlFile, _ := filepath.Abs(p)
-	//
-	// 	cmdStr := fmt.Sprintf("mysql -h %v -u %v -p%v -P %v %v < %v",
-	// 		mySQLConnectionChairData.Host,
-	// 		mySQLConnectionChairData.User,
-	// 		mySQLConnectionChairData.Password,
-	// 		mySQLConnectionChairData.Port,
-	// 		mySQLConnectionChairData.DBName,
-	// 		sqlFile,
-	// 	)
-	// 	fmt.Println("initializing command string is", cmdStr)
-	// 	if err := exec.Command("bash", "-c", cmdStr).Run(); err != nil {
-	// 		fmt.Println(err)
-	// 		c.Logger().Errorf("Initialize script error : %v", err)
-	// 		return c.NoContent(http.StatusInternalServerError)
-	// 	}
-	// }
-	//
-	// paths = []string{
-	// 	filepath.Join(sqlDir, "0_Schema.sql"),
-	// 	filepath.Join(sqlDir, "1_DummyEstateData.sql"),
-	// }
-	//
-	// for _, p := range paths {
-	// 	sqlFile, _ := filepath.Abs(p)
-	// 	cmdStr := fmt.Sprintf("mysql -h %v -u %v -p%v -P %v %v < %v",
-	// 		mySQLConnectionEstateData.Host,
-	// 		mySQLConnectionEstateData.User,
-	// 		mySQLConnectionEstateData.Password,
-	// 		mySQLConnectionEstateData.Port,
-	// 		mySQLConnectionEstateData.DBName,
-	// 		sqlFile,
-	// 	)
-	// 	fmt.Println("initializing command string is", cmdStr)
-	// 	if err := exec.Command("bash", "-c", cmdStr).Run(); err != nil {
-	// 		fmt.Println(err)
-	// 		c.Logger().Errorf("Initialize script error : %v", err)
-	// 		return c.NoContent(http.StatusInternalServerError)
-	// 	}
-	// }
-	//
+	sqlDir := filepath.Join("..", "mysql", "db")
+	paths := []string{
+		filepath.Join(sqlDir, "0_Schema.sql"),
+		filepath.Join(sqlDir, "2_DummyChairData.sql"),
+	}
+
+	for _, p := range paths {
+		sqlFile, _ := filepath.Abs(p)
+
+		cmdStr := fmt.Sprintf("mysql -h %v -u %v -p%v -P %v %v < %v",
+			mySQLConnectionChairData.Host,
+			mySQLConnectionChairData.User,
+			mySQLConnectionChairData.Password,
+			mySQLConnectionChairData.Port,
+			mySQLConnectionChairData.DBName,
+			sqlFile,
+		)
+		fmt.Println("initializing command string is", cmdStr)
+		if err := exec.Command("bash", "-c", cmdStr).Run(); err != nil {
+			fmt.Println(err)
+			c.Logger().Errorf("Initialize script error : %v", err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+	}
+
+	paths = []string{
+		filepath.Join(sqlDir, "0_Schema.sql"),
+		filepath.Join(sqlDir, "1_DummyEstateData.sql"),
+	}
+
+	for _, p := range paths {
+		sqlFile, _ := filepath.Abs(p)
+		cmdStr := fmt.Sprintf("mysql -h %v -u %v -p%v -P %v %v < %v",
+			mySQLConnectionEstateData.Host,
+			mySQLConnectionEstateData.User,
+			mySQLConnectionEstateData.Password,
+			mySQLConnectionEstateData.Port,
+			mySQLConnectionEstateData.DBName,
+			sqlFile,
+		)
+		fmt.Println("initializing command string is", cmdStr)
+		if err := exec.Command("bash", "-c", cmdStr).Run(); err != nil {
+			fmt.Println(err)
+			c.Logger().Errorf("Initialize script error : %v", err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+	}
+
 	return c.JSON(http.StatusOK, InitializeResponse{
 		Language: "go",
 	})
