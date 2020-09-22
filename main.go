@@ -274,8 +274,8 @@ func main() {
 	e.GET("/api/estate/search/condition", getEstateSearchCondition)
 	e.GET("/api/recommended_estate/:id", searchRecommendedEstateWithChair)
 
-	const webapp2Host = "192.168.10.5"
-	const webapp3Host = "192.168.10.3"
+	const webapp2Host = "192.168.10.3"
+	const webapp3Host = "192.168.10.4"
 	mySQLConnectionEstateData = NewMySQLConnectionEnv(webapp2Host)
 	mySQLConnectionChairData = NewMySQLConnectionEnv(webapp3Host)
 
