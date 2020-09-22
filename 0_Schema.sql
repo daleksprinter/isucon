@@ -40,5 +40,6 @@ CREATE TABLE isuumo.chair
     stock       INTEGER         NOT NULL,
     popularity_desc INTEGER AS (-popularity) NOT NULL,
     INDEX priceind(price),
+    INDEX stkprcind(stock, price),
     INDEX piind(popularity_desc, id)
 );
