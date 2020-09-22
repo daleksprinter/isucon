@@ -308,8 +308,7 @@ func initialize(c echo.Context) error {
 	for _, p := range paths {
 		sqlFile, _ := filepath.Abs(p)
 		cmdStr := fmt.Sprintf("mysql -h %v -u %v -p%v -P %v %v < %v",
-			// mySQLConnectionEstateData.Host,
-			"192.168.10.2",
+			mySQLConnectionEstateData.Host,
 			mySQLConnectionEstateData.User,
 			mySQLConnectionEstateData.Password,
 			mySQLConnectionEstateData.Port,
@@ -322,8 +321,7 @@ func initialize(c echo.Context) error {
 		}
 
 		cmdStr = fmt.Sprintf("mysql -h %v -u %v -p%v -P %v %v < %v",
-			// mySQLConnectionChairData.Host,
-			"192.168.10.3",
+			mySQLConnectionChairData.Host,
 			mySQLConnectionChairData.User,
 			mySQLConnectionChairData.Password,
 			mySQLConnectionChairData.Port,
