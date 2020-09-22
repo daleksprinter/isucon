@@ -274,8 +274,10 @@ func main() {
 	e.GET("/api/estate/search/condition", getEstateSearchCondition)
 	e.GET("/api/recommended_estate/:id", searchRecommendedEstateWithChair)
 
-	mySQLConnectionEstateData = NewMySQLConnectionEnv("192.168.10.2")
-	mySQLConnectionChairData = NewMySQLConnectionEnv("192.168.10.3")
+	const webapp2Host = "192.168.10.5"
+	const webapp3Host = "192.168.10.3"
+	mySQLConnectionEstateData = NewMySQLConnectionEnv(webapp2Host)
+	mySQLConnectionChairData = NewMySQLConnectionEnv(webapp3Host)
 
 	var err error
 	estateDB, err = mySQLConnectionEstateData.ConnectDB()
@@ -301,8 +303,30 @@ func initialize(c echo.Context) error {
 	sqlDir := filepath.Join("..", "mysql", "db")
 	paths := []string{
 		filepath.Join(sqlDir, "0_Schema.sql"),
-		filepath.Join(sqlDir, "1_DummyEstateData.sql"),
 		filepath.Join(sqlDir, "2_DummyChairData.sql"),
+	}
+
+	for _, p := range paths {
+		sqlFile, _ := filepath.Abs(p)
+
+		cmdStr := fmt.Sprintf("mysql -h %v -u %v -p%v -P %v %v < %v",
+			mySQLConnectionChairData.Host,
+			mySQLConnectionChairData.User,
+			mySQLConnectionChairData.Password,
+			mySQLConnectionChairData.Port,
+			mySQLConnectionChairData.DBName,
+			sqlFile,
+		)
+		if err := exec.Command("bash", "-c", cmdStr).Run(); err != nil {
+			fmt.Println(err)
+			c.Logger().Errorf("Initialize script error : %v", err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+	}
+
+	paths = []string{
+		filepath.Join(sqlDir, "0_Schema.sql"),
+		filepath.Join(sqlDir, "1_DummyEstateData.sql"),
 	}
 
 	for _, p := range paths {
@@ -316,19 +340,7 @@ func initialize(c echo.Context) error {
 			sqlFile,
 		)
 		if err := exec.Command("bash", "-c", cmdStr).Run(); err != nil {
-			c.Logger().Errorf("Initialize script error : %v", err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
-
-		cmdStr = fmt.Sprintf("mysql -h %v -u %v -p%v -P %v %v < %v",
-			mySQLConnectionChairData.Host,
-			mySQLConnectionChairData.User,
-			mySQLConnectionChairData.Password,
-			mySQLConnectionChairData.Port,
-			mySQLConnectionChairData.DBName,
-			sqlFile,
-		)
-		if err := exec.Command("bash", "-c", cmdStr).Run(); err != nil {
+			fmt.Println(err)
 			c.Logger().Errorf("Initialize script error : %v", err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
