@@ -310,10 +310,10 @@ func initialize(c echo.Context) error {
 		cmdStr := fmt.Sprintf("mysql -h %v -u %v -p%v -P %v %v < %v",
 			// mySQLConnectionEstateData.Host,
 			"192.168.10.2",
-			mySQLConnectionData.User,
-			mySQLConnectionData.Password,
-			mySQLConnectionData.Port,
-			mySQLConnectionData.DBName,
+			mySQLConnectionEstateData.User,
+			mySQLConnectionEstateData.Password,
+			mySQLConnectionEstateData.Port,
+			mySQLConnectionEstateData.DBName,
 			sqlFile,
 		)
 		if err := exec.Command("bash", "-c", cmdStr).Run(); err != nil {
@@ -324,10 +324,10 @@ func initialize(c echo.Context) error {
 		cmdStr = fmt.Sprintf("mysql -h %v -u %v -p%v -P %v %v < %v",
 			// mySQLConnectionChairData.Host,
 			"192.168.10.3",
-			mySQLConnectionData.User,
-			mySQLConnectionData.Password,
-			mySQLConnectionData.Port,
-			mySQLConnectionData.DBName,
+			mySQLConnectionChairData.User,
+			mySQLConnectionChairData.Password,
+			mySQLConnectionChairData.Port,
+			mySQLConnectionChairData.DBName,
 			sqlFile,
 		)
 		if err := exec.Command("bash", "-c", cmdStr).Run(); err != nil {
@@ -344,7 +344,7 @@ func initialize(c echo.Context) error {
 func getChairDetail(c echo.Context) error {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.Echo().Logger.Errorf("Request parameter \"id\" parse error : %v", err)
+		c.Echo().Loggaier.Errorf("Request parameter \"id\" parse error : %v", err)
 		return c.NoContent(http.StatusBadRequest)
 	}
 
