@@ -434,6 +434,7 @@ func postChair(c echo.Context) error {
 	}
 	values = values[:len(values)-1]
 	query := fmt.Sprintf("INSERT INTO chair(id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock) VALUES %s", values)
+	fmt.Println(query)
 	_, err = tx.Exec(query)
 	if err != nil {
 		c.Logger().Errorf("failed to insert chair: %v", err)
@@ -737,6 +738,7 @@ func postEstate(c echo.Context) error {
 	}
 	values = values[:len(values)-1]
 	query := fmt.Sprintf("INSERT INTO estate(id, name, description, thumbnail, address, latitude, longitude, rent, door_height, door_width, features, popularity) VALUES %s", values)
+	fmt.Println(query)
 	_, err = tx.Exec(query)
 	if err != nil {
 		c.Logger().Errorf("failed to insert chair: %v", err)
@@ -936,7 +938,6 @@ func searchEstateNazotte(c echo.Context) error {
 	}
 	estatesInBoundingBox := []Estate{}
 	query := fmt.Sprintf(`SELECT * FROM estate WHERE ST_Contains(ST_PolygonFromText(%s), point) ORDER BY popularity_desc ASC, id ASC LIMIT ?`, coordinates.coordinatesToText())
-	fmt.Println("nazottequerydebug", query)
 	err = estateDB.Select(&estatesInBoundingBox, query, NazotteLimit)
 	if err == sql.ErrNoRows {
 		c.Echo().Logger.Infof("select * from estate where latitude ...", err)
