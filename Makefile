@@ -17,3 +17,7 @@ mysqldump:
 
 initdb:
 	/home/isucon/isuumo/webapp/mysql/db/init.sh
+
+git:
+	git fetch
+	git merge origin/master
