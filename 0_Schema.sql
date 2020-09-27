@@ -19,7 +19,9 @@ CREATE TABLE isuumo.estate
     features    VARCHAR(64)         NOT NULL,
     popularity  INTEGER             NOT NULL,
     popularity_desc INTEGER AS (-popularity) NOT NULL,
+    point       POINT AS (POINT(latitude, longitude)) STORED NOT NULL,
     INDEX rentind(rent),
+    spatial index spaind(point),
     INDEX piind(popularity_desc, id)
 );
 
