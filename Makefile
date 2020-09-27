@@ -5,6 +5,8 @@ isuumo: *.go
 
 logrotate:
 	sudo sh -c " :>/var/log/mysql/mysql-slow.sql"
+	sudo journalctl --rotate
+	sudo journalctl --vacuum-time=1s
 
 slackcat:
 	slackcat --channel isucon-log mysql-log-profile
@@ -22,6 +24,5 @@ git:
 	git fetch
 	git merge origin/master
 
-journalrotate:
-	sudo journalctl --rotate
-	sudo journalctl --vacuum-time=1s
+jounal:
+	sudo journalctl -u isuumo.go
