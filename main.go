@@ -425,7 +425,7 @@ func postChair(c echo.Context) error {
 			c.Logger().Errorf("failed to read record: %v", err)
 			return c.NoContent(http.StatusBadRequest)
 		}
-		values = fmt.Sprintf("%s(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s),", values, id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock)
+		values = fmt.Sprintf("%s(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s),", values, strconv.Itoa(id), name, description, thumbnail, strconv.Itoa(price), strconv.Itoa(height), strconv.Itoa(width), strconv.Itoa(depth), color, features, kind, strconv.Itoa(popularity), strconv.Itoa(stock))
 		// _, err := tx.Exec("INSERT INTO chair(id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock)
 		// if err != nil {
 		// 	c.Logger().Errorf("failed to insert chair: %v", err)
@@ -713,6 +713,7 @@ func postEstate(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	defer tx.Rollback()
+	values := ""
 	for _, row := range records {
 		rm := RecordMapper{Record: row}
 		id := rm.NextInt()
@@ -731,12 +732,17 @@ func postEstate(c echo.Context) error {
 			c.Logger().Errorf("failed to read record: %v", err)
 			return c.NoContent(http.StatusBadRequest)
 		}
-		_, err := tx.Exec("INSERT INTO estate(id, name, description, thumbnail, address, latitude, longitude, rent, door_height, door_width, features, popularity) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", id, name, description, thumbnail, address, latitude, longitude, rent, doorHeight, doorWidth, features, popularity)
-		if err != nil {
-			c.Logger().Errorf("failed to insert estate: %v", err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
+
+		values = fmt.Sprintf("%s(%d,%s,%s,%s,%s,%f,%f,%d,%d,%d,%s,%d),", values, id, name, description, thumbnail, address, latitude, longitude, rent, doorHeight, doorWidth, features, popularity)
 	}
+	values = values[:len(values)-1]
+	query := fmt.Sprintf("INSERT INTO estate(id, name, description, thumbnail, address, latitude, longitude, rent, door_height, door_width, features, popularity) VALUES %s", values)
+	_, err = tx.Exec(query)
+	if err != nil {
+		c.Logger().Errorf("failed to insert chair: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
 	if err := tx.Commit(); err != nil {
 		c.Logger().Errorf("failed to commit tx: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
