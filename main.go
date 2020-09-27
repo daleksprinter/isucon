@@ -425,7 +425,9 @@ func postChair(c echo.Context) error {
 			c.Logger().Errorf("failed to read record: %v", err)
 			return c.NoContent(http.StatusBadRequest)
 		}
-		values = fmt.Sprintf("%s(%d,%s,%s,%s,%d,%d,%d,%d,%s,%s,%s,%d,%d),", values, id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock)
+		value := fmt.Sprintf("(%d,%s,%s,%s,%d,%d,%d,%d,%s,%s,%s,%d,%d)", id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock)
+		fmt.Println(value)
+		values = values + value + ","
 	}
 	values = values[:len(values)-1]
 	query := fmt.Sprintf("INSERT INTO chair(id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock) VALUES %s", values)
