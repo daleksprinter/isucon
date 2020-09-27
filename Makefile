@@ -21,3 +21,7 @@ initdb:
 git:
 	git fetch
 	git merge origin/master
+
+journalrotate:
+	sudo journalctl --rotate
+	sudo journalctl --vacuum-time=1s
