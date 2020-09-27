@@ -917,7 +917,7 @@ func searchEstateNazotte(c echo.Context) error {
 		return c.NoContent(http.StatusBadRequest)
 	}
 	estatesInBoundingBox := []Estate{}
-	query := fmt.Sprintf(`SELECT * FROM estate WHERE ST_Contains(ST_PolygonFromText(%s), point))) ORDER BY popularity_desc ASC, id ASC LIMIT ?`, coordinates.coordinatesToText())
+	query := fmt.Sprintf(`SELECT * FROM estate WHERE ST_Contains(ST_PolygonFromText(%s), point)) ORDER BY popularity_desc ASC, id ASC LIMIT ?`, coordinates.coordinatesToText())
 	fmt.Println("nazottequerydebug", query)
 	err = estateDB.Select(&estatesInBoundingBox, query, NazotteLimit)
 	if err == sql.ErrNoRows {
