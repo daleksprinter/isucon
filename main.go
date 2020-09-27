@@ -425,12 +425,7 @@ func postChair(c echo.Context) error {
 			c.Logger().Errorf("failed to read record: %v", err)
 			return c.NoContent(http.StatusBadRequest)
 		}
-		values = fmt.Sprintf("%s(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s),", values, strconv.Itoa(id), name, description, thumbnail, strconv.Itoa(price), strconv.Itoa(height), strconv.Itoa(width), strconv.Itoa(depth), color, features, kind, strconv.Itoa(popularity), strconv.Itoa(stock))
-		// _, err := tx.Exec("INSERT INTO chair(id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock)
-		// if err != nil {
-		// 	c.Logger().Errorf("failed to insert chair: %v", err)
-		// 	return c.NoContent(http.StatusInternalServerError)
-		// }
+		values = fmt.Sprintf("%s(%d,%s,%s,%s,%d,%d,%d,%d,%s,%s,%s,%d,%d),", values, id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock)
 	}
 	values = values[:len(values)-1]
 	query := fmt.Sprintf("INSERT INTO chair(id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock) VALUES %s", values)
