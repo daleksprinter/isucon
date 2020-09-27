@@ -406,7 +406,7 @@ func postChair(c echo.Context) error {
 	}
 	defer tx.Rollback()
 	values := ""
-	ind := 1
+	ind := 0
 	for _, row := range records {
 		rm := RecordMapper{Record: row}
 		id := rm.NextInt()
