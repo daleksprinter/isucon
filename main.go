@@ -427,15 +427,14 @@ func postChair(c echo.Context) error {
 			return c.NoContent(http.StatusBadRequest)
 		}
 		value := fmt.Sprintf("(%d,%s,%s,%s,%d,%d,%d,%d,%s,%s,%s,%d,%d)", id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock)
-		ind++
 		if ind != len(records) {
 			value += ","
 		}
 		fmt.Println(value)
 		values = values + value
+		fmt.Println(len(values))
 
 	}
-	values = values[:len(values)-1]
 	query := fmt.Sprintf("INSERT INTO chair(id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock) VALUES %s", values)
 	fmt.Println(query[len(values)-30:])
 	_, err = tx.Exec(query)
