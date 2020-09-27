@@ -437,7 +437,7 @@ func postChair(c echo.Context) error {
 	}
 	values = values[:len(values)-1]
 	query := fmt.Sprintf("INSERT INTO chair(id, name, description, thumbnail, price, height, width, depth, color, features, kind, popularity, stock) VALUES %s", values)
-	fmt.Println(query)
+	fmt.Println(query[len(values)-30:])
 	_, err = tx.Exec(query)
 	if err != nil {
 		c.Logger().Errorf("failed to insert chair: %v", err)
