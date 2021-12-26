@@ -10,3 +10,8 @@ mysqldumpslow:
 
 gobuild:
 	cd /home/isucon/webapp/go && go build -o isucondition main.go
+
+restart:
+	sudo systemctl restart nginx
+	sudo systemctl restart mysql
+	sudo systemctl restart isucondition.go
