@@ -9,4 +9,4 @@ mysqldumpslow:
 	echo mysql
 
 gobuild:
-	echo gobuild
+	cd /home/isucon/webapp/go && go build -o isucondition main.go
