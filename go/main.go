@@ -1089,7 +1089,7 @@ func getTrend(c echo.Context) error {
 	for _, character := range characterList {
 		isuList := []Isu{}
 		err = db.Select(&isuList,
-			"SELECT * FROM `isu` WHERE `character` = ?",
+			"SELECT `id`, `character`, `jia_isu_uuid` FROM `isu` WHERE `character` = ?",
 			character.Character,
 		)
 		if err != nil {
@@ -1101,9 +1101,10 @@ func getTrend(c echo.Context) error {
 		characterWarningIsuConditions := []*TrendCondition{}
 		characterCriticalIsuConditions := []*TrendCondition{}
 		for _, isu := range isuList {
+			c.Logger().Info("%+v", isu)
 			conditions := []IsuCondition{}
 			err = db.Select(&conditions,
-				"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC limit 1",
+				"SELECT `condition`, timestamp FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC limit 1",
 				isu.JIAIsuUUID,
 			)
 			if err != nil {
