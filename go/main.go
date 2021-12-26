@@ -1089,7 +1089,7 @@ func getTrend(c echo.Context) error {
 	for _, character := range characterList {
 		isuList := []Isu{}
 		err = db.Select(&isuList,
-			"SELECT id, character FROM `isu` WHERE `character` = ?",
+			"SELECT id, `character`, jia_isu_uuid FROM `isu` WHERE `character` = ?",
 			character.Character,
 		)
 		if err != nil {
