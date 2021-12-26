@@ -1104,7 +1104,7 @@ func getTrend(c echo.Context) error {
 			c.Logger().Info("%+v", isu)
 			conditions := []IsuCondition{}
 			err = db.Select(&conditions,
-				"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC limit 1",
+				"SELECT `condition`, timestamp FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC limit 1",
 				isu.JIAIsuUUID,
 			)
 			if err != nil {
