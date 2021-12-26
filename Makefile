@@ -1,6 +1,6 @@
 cleanlog:
-	echo '' > /var/log/nginx/accessltsv.log
-	echo '' > /var/log/slow.log
+	sudo sh -c "echo '' > /var/log/nginx/accessltsv.log"
+	sudo sh -c "echo '' > /var/log/slow.log"
 	sudo journalctl --rotate
 	sudo journalctl --vacuum-time=1s
 
