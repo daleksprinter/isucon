@@ -328,6 +328,18 @@ func postInitialize(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	conditions := []IsuCondition{}
+	err = db.Select(&conditions,
+		"SELECT `condition`, timestamp, jia_isu_uuid FROM `isu_condition` ",
+	)
+	if err != nil {
+		c.Logger().Errorf("db error : %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	for _, cond := range conditions {
+		updateLastCondition(cond.JIAIsuUUID, cond)
+	}
+
 	_, err = db.Exec(
 		"INSERT INTO `isu_association_config` (`name`, `url`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `url` = VALUES(`url`)",
 		"jia_service_url",
@@ -1119,7 +1131,7 @@ func getTrend(c echo.Context) error {
 			// 	return c.NoContent(http.StatusInternalServerError)
 			// }
 			if !ok {
-				c.Logger().Errorf("last condition not found error")
+				c.Logger().Errorf("last condition not found error %s", isu.JIAIsuUUID)
 				return c.NoContent(http.StatusInternalServerError)
 			}
 
@@ -1221,11 +1233,10 @@ func postIsuCondition(c echo.Context) error {
 			c.Logger().Errorf("db error: %v", err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
-		lastIsuCondition[jiaIsuUUID] = IsuCondition{
+		updateLastCondition(jiaIsuUUID, IsuCondition{
 			Timestamp: timestamp,
 			Condition: cond.Condition,
-		}
-
+		})
 	}
 
 	err = tx.Commit()
@@ -1235,6 +1246,11 @@ func postIsuCondition(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusAccepted)
+}
+func updateLastCondition(jiaIsuUUID string, cond IsuCondition) {
+	if cond.Timestamp.After(lastIsuCondition[jiaIsuUUID].Timestamp) {
+		lastIsuCondition[jiaIsuUUID] = cond
+	}
 }
 
 // ISUのコンディションの文字列がcsv形式になっているか検証
