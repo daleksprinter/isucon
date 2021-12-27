@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"sort"
@@ -237,6 +238,10 @@ func main() {
 	// e.Static("/assets", frontendContentsPath+"/assets")
 
 	mySQLConnectionData = NewMySQLConnectionEnv()
+
+	go func() {
+		http.ListenAndServe("localhost:6060", nil)
+	}()
 
 	var err error
 	db, err = mySQLConnectionData.ConnectDB()
