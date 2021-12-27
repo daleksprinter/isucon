@@ -1250,11 +1250,11 @@ func postIsuCondition(c echo.Context) error {
 	return c.NoContent(http.StatusAccepted)
 }
 func updateLastCondition(jiaIsuUUID string, cond IsuCondition) {
+	mux.Lock()
 	if cond.Timestamp.After(lastIsuCondition[jiaIsuUUID].Timestamp) {
-		mux.Lock()
 		lastIsuCondition[jiaIsuUUID] = cond
-		mux.Unlock()
 	}
+	mux.Unlock()
 }
 
 // ISUのコンディションの文字列がcsv形式になっているか検証
