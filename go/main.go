@@ -1119,6 +1119,7 @@ func getTrend(c echo.Context) error {
 			// 	return c.NoContent(http.StatusInternalServerError)
 			// }
 			if !ok {
+				c.Logger().Errorf("last condition not found error")
 				return c.NoContent(http.StatusInternalServerError)
 			}
 
