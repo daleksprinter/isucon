@@ -28,3 +28,9 @@ bench:
 
 pprof:
 	curl -s http://localhost:6060/debug/pprof/profile > cpu.pprof
+
+pprofpng:
+	go tool pprof -png go/isucondition cpu.pprof > out.png
+
+pprofconsole:
+	go tool pprof go/isucondition cpu.pprof
