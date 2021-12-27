@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"sort"
