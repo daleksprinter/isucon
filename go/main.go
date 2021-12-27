@@ -1224,19 +1224,29 @@ func postIsuCondition(c echo.Context) error {
 			return c.String(http.StatusBadRequest, "bad request body")
 		}
 
-		_, err = tx.Exec(
-			"INSERT INTO `isu_condition`"+
-				"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-				"	VALUES (?, ?, ?, ?, ?)",
-			jiaIsuUUID, timestamp, cond.IsSitting, cond.Condition, cond.Message)
-		if err != nil {
-			c.Logger().Errorf("db error: %v", err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
 		updateLastCondition(jiaIsuUUID, IsuCondition{
 			Timestamp: timestamp,
 			Condition: cond.Condition,
 		})
+	}
+
+	query := "INSERT INTO `isu_condition` (`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`) VALUES "
+	values := []string{}
+	params := make([]interface{}, len(req))
+	for _, cond := range req {
+		values = append(values, "(?, ?, ?, ?, ?)")
+		params = append(params,
+			jiaIsuUUID,
+			time.Unix(cond.Timestamp, 0),
+			cond.IsSitting,
+			cond.Condition,
+			cond.Message)
+	}
+	query = query + strings.Join(values, ",")
+	_, err = tx.Exec(query, params...)
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	err = tx.Commit()
