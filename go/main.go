@@ -50,7 +50,7 @@ var (
 	mySQLConnectionData *MySQLConnectionEnv
 
 	jiaJWTSigningKey *ecdsa.PublicKey
-	mux              sync.Mutex
+	mux              sync.RWMutex
 	lastIsuCondition map[string]IsuCondition
 
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
@@ -1126,9 +1126,9 @@ func getTrend(c echo.Context) error {
 			// 	"SELECT `condition`, timestamp FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC limit 1",
 			// 	isu.JIAIsuUUID,
 			// )
-			mux.Lock()
+			mux.RLock()
 			lastCond, ok := lastIsuCondition[isu.JIAIsuUUID]
-			mux.Unlock()
+			mux.RUnlock()
 			// if err != nil {
 			// 	c.Logger().Errorf("db error: %v", err)
 			// 	return c.NoContent(http.StatusInternalServerError)
