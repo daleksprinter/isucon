@@ -1126,8 +1126,9 @@ func getTrend(c echo.Context) error {
 			// 	"SELECT `condition`, timestamp FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC limit 1",
 			// 	isu.JIAIsuUUID,
 			// )
-
+			mux.Lock()
 			lastCond, ok := lastIsuCondition[isu.JIAIsuUUID]
+			mux.Unlock()
 			// if err != nil {
 			// 	c.Logger().Errorf("db error: %v", err)
 			// 	return c.NoContent(http.StatusInternalServerError)
