@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -49,6 +50,7 @@ var (
 	mySQLConnectionData *MySQLConnectionEnv
 
 	jiaJWTSigningKey *ecdsa.PublicKey
+	mux              sync.Mutex
 	lastIsuCondition map[string]IsuCondition
 
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
@@ -1249,7 +1251,9 @@ func postIsuCondition(c echo.Context) error {
 }
 func updateLastCondition(jiaIsuUUID string, cond IsuCondition) {
 	if cond.Timestamp.After(lastIsuCondition[jiaIsuUUID].Timestamp) {
+		mux.Lock()
 		lastIsuCondition[jiaIsuUUID] = cond
+		mux.Unlock()
 	}
 }
 
