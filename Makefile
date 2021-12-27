@@ -26,3 +26,5 @@ init: cleanlog gobuild restart
 bench:
 	/home/isucon/bench/bench -tls -target=192.168.0.11 -all-addresses=192.168.0.11,192.168.0.12,192.168.0.13 -jia-service-url http://192.168.0.10:5000
 
+pprof:
+	curl -s http://localhost:6060/debug/pprof/profile > cpu.pprof
