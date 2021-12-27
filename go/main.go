@@ -1243,8 +1243,6 @@ func postIsuCondition(c echo.Context) error {
 			cond.Message)
 	}
 	query = query + strings.Join(values, ",")
-	c.Logger().Info(query)
-	c.Logger().Info(params)
 	_, err = tx.Exec(query, params...)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
