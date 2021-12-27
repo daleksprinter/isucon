@@ -1232,7 +1232,7 @@ func postIsuCondition(c echo.Context) error {
 
 	query := "INSERT INTO `isu_condition` (`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`) VALUES "
 	values := []string{}
-	params := make([]interface{}, len(req))
+	params := make([]interface{}, 0)
 	for _, cond := range req {
 		values = append(values, "(?, ?, ?, ?, ?)")
 		params = append(params,
