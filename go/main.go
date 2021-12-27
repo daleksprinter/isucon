@@ -238,6 +238,10 @@ func main() {
 
 	mySQLConnectionData = NewMySQLConnectionEnv()
 
+	go func() {
+		http.ListenAndServe("localhost:6060", nil)
+	}()
+
 	var err error
 	db, err = mySQLConnectionData.ConnectDB()
 	if err != nil {
