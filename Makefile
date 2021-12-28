@@ -5,7 +5,7 @@ cleanlog:
 	sudo journalctl --vacuum-time=1s
 
 alp:
-	cat /var/log/nginx/accessltsv.log | alp ltsv
+	cat /var/log/nginx/accessltsv.log | alp ltsv -m '/api/condition/.*, /isu/.*' --sort sum -r
 
 mysqldumpslow:
 	mysqldumpslow -s t /var/log/slow.log
