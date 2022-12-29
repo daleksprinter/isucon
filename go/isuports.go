@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	l "log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -154,6 +156,10 @@ func Run() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(SetCacheControlPrivate)
+
+	go func() {
+		l.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	// SaaS管理者向けAPI
 	e.POST("/api/admin/tenants/add", tenantsAddHandler)
